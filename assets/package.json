@@ -1,0 +1,10 @@
+{
+  "name": "track-analyzer-assets",
+  "private": true,
+  "dependencies": {
+    "@mapbox/polyline": "1.2.1",
+    "echarts": "6.1.0",
+    "leaflet": "1.9.4",
+    "leaflet.heat": "0.2.0"
+  }
+}

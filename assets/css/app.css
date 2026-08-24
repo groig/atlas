@@ -1,0 +1,224 @@
+@import "tailwindcss" source(none);
+@import "leaflet/dist/leaflet.css";
+@import "phoenix-colocated/track_analyzer/colocated.css";
+@source "../css";
+@source "../js";
+@source "../../lib/track_analyzer_web";
+@source "../../_build/dev/phoenix-colocated/track_analyzer/*/";
+
+@plugin "../vendor/heroicons";
+
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+:root {
+  color-scheme: light;
+  --canvas: #f2f5ee;
+  --canvas-raised: #fbfcf8;
+  --surface: rgba(255, 255, 252, 0.88);
+  --surface-strong: #ffffff;
+  --ink: #15231c;
+  --ink-muted: #637168;
+  --line: rgba(28, 50, 39, 0.13);
+  --accent: #d8ff45;
+  --accent-strong: #a9d500;
+  --accent-ink: #1a2a08;
+  --cyan: #27d9c2;
+  --orange: #ff7d45;
+  --danger: #dc4f55;
+  --shadow: 0 20px 60px rgba(26, 48, 36, 0.09);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #0c1310;
+  --canvas-raised: #111b16;
+  --surface: rgba(18, 29, 23, 0.9);
+  --surface-strong: #17241d;
+  --ink: #eff7f0;
+  --ink-muted: #93a59a;
+  --line: rgba(219, 241, 226, 0.12);
+  --accent: #d8ff45;
+  --accent-strong: #bbeb18;
+  --accent-ink: #111a05;
+  --cyan: #36e3cd;
+  --orange: #ff8752;
+  --danger: #ff6f76;
+  --shadow: 0 22px 70px rgba(0, 0, 0, 0.3);
+}
+
+html {
+  background: var(--canvas);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 8% -8%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 30rem),
+    linear-gradient(135deg, transparent 0 49.5%, color-mix(in srgb, var(--line) 45%, transparent) 49.5% 50%, transparent 50%) 0 0 / 34px 34px,
+    var(--canvas);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent-strong) 65%, transparent);
+  outline-offset: 3px;
+}
+
+[data-phx-session],
+[data-phx-teleported-src] {
+  display: contents;
+}
+
+.topo-card {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.metric-number {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.045em;
+}
+
+.contour-pattern {
+  background-image:
+    radial-gradient(ellipse at 12% 38%, transparent 0 19%, color-mix(in srgb, var(--line) 70%, transparent) 19.2% 19.6%, transparent 19.8%),
+    radial-gradient(ellipse at 76% 68%, transparent 0 28%, color-mix(in srgb, var(--line) 55%, transparent) 28.2% 28.6%, transparent 28.8%);
+}
+
+.leaflet-container {
+  min-height: 20rem;
+  background: var(--canvas-raised);
+  color: #1b2c22;
+  font-family: inherit;
+}
+
+.leaflet-control-attribution {
+  border-radius: 0.5rem 0 0 0;
+  font-size: 10px;
+}
+
+.leaflet-control-zoom a {
+  color: #1b2c22;
+}
+
+.track-map-marker {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 3px solid white;
+  border-radius: 999px;
+  background: #15231c;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.25);
+}
+
+.track-map-marker[data-kind="finish"] {
+  background: #d8ff45;
+}
+
+.track-map-marker[data-kind="cursor"] {
+  width: 15px;
+  height: 15px;
+  border-width: 2px;
+  background: var(--orange);
+}
+
+.track-map-marker[data-kind="pinned"] {
+  width: 17px;
+  height: 17px;
+  border: 3px solid var(--ink);
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 28%, transparent), 0 5px 18px rgba(0, 0, 0, 0.28);
+}
+
+.track-focus-tooltip {
+  display: grid;
+  gap: 0.15rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: var(--ink);
+  color: var(--canvas);
+  font-family: inherit;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
+.track-focus-tooltip strong {
+  font-size: 0.78rem;
+}
+
+.track-focus-tooltip span {
+  color: color-mix(in srgb, var(--canvas) 65%, transparent);
+}
+
+.track-focus-tooltip .track-focus-state {
+  color: var(--accent);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.leaflet-tooltip-top.track-focus-tooltip::before {
+  border-top-color: var(--ink);
+}
+
+.echarts-surface {
+  width: 100%;
+  min-height: 18rem;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink-muted) 38%, transparent);
+  background-clip: padding-box;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
