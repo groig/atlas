@@ -14,6 +14,11 @@ defmodule TrackAnalyzerWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # No pipeline: the container health check needs neither a session nor CSRF.
+  scope "/", TrackAnalyzerWeb do
+    get "/health", HealthController, :show
+  end
+
   scope "/", TrackAnalyzerWeb do
     pipe_through :browser
 
