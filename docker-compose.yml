@@ -1,0 +1,75 @@
+# Local development environment for Track / Atlas.
+#
+#   make env-start      start everything, then open http://localhost:4000
+#   make env-logs       follow the application log
+#   make test           run the test suite
+#   make env-recreate   destroy the volumes and rebuild from scratch
+#
+# The working tree is bind-mounted into the app container, so edits on the host
+# reload in place. Dependencies, build artefacts, the database and the track
+# library live in named volumes and survive `make env-stop`.
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: track_analyzer_dev
+    ports:
+      # 5433 on the host so this never fights a PostgreSQL already on 5432.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      args:
+        # The Makefile exports these; 1000 is the fallback for bare `docker compose`.
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      # Read by the dev block of config/runtime.exs.
+      DATABASE_URL: ecto://postgres:postgres@db/track_analyzer_dev
+      PHX_BIND_IP: "0.0.0.0"
+      TRACK_STORAGE_PATH: /data/track_analyzer
+      # Read by the test block of config/runtime.exs (config/test.exs builds its
+      # own database name, so DATABASE_URL is the wrong knob there).
+      POSTGRES_HOST: db
+      # An .osf upload is buffered here before being copied into storage, and a
+      # batch can be 25 files of up to 5 GB, so keep it off the container layer.
+      TMPDIR: /data/tmp
+    volumes:
+      - .:/app
+      - deps:/app/deps
+      - build:/app/_build
+      - node_modules:/app/assets/node_modules
+      - track-storage:/data/track_analyzer
+      - upload-tmp:/data/tmp
+    tty: true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # The first boot fetches deps and compiles the whole project.
+      start_period: 180s
+
+volumes:
+  pgdata:
+  deps:
+  build:
+  node_modules:
+  track-storage:
+  upload-tmp:

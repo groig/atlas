@@ -28,6 +28,20 @@ if config_env() == :dev do
     config :track_analyzer, TrackAnalyzer.Repo, database: database
   end
 
+  # Set by docker-compose.yml so the app reaches the `db` service instead of the
+  # localhost credentials in config/dev.exs. Unset on a host, nothing changes.
+  if database_url = System.get_env("DATABASE_URL") do
+    config :track_analyzer, TrackAnalyzer.Repo, url: database_url
+  end
+
+  # config/dev.exs binds to loopback, which is unreachable from outside a
+  # container. Containers set PHX_BIND_IP=0.0.0.0.
+  if bind_ip = System.get_env("PHX_BIND_IP") do
+    {:ok, ip} = :inet.parse_address(String.to_charlist(bind_ip))
+
+    config :track_analyzer, TrackAnalyzerWeb.Endpoint, http: [ip: ip]
+  end
+
   if storage_root = System.get_env("TRACK_STORAGE_PATH") do
     config :track_analyzer, TrackAnalyzer.Storage.Local, root: storage_root
   end
@@ -50,6 +64,14 @@ if config_env() == :dev do
         ~r"lib/track_analyzer_web/(controllers|live|components)/.*\.(ex|heex)$"E
       ]
     ]
+end
+
+if config_env() == :test do
+  # config/test.exs derives its database name from MIX_TEST_PARTITION, so only
+  # the host is overridable here. Set by docker-compose.yml.
+  if hostname = System.get_env("POSTGRES_HOST") do
+    config :track_analyzer, TrackAnalyzer.Repo, hostname: hostname
+  end
 end
 
 if config_env() == :prod do
