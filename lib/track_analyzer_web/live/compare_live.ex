@@ -20,8 +20,15 @@ defmodule TrackAnalyzerWeb.CompareLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
+    previous_ids = socket.assigns.selected_ids
     ids = parse_ids(params["ids"])
     selected = Tracks.compare_tracks(ids)
+
+    changed_candidates =
+      previous_ids
+      |> symmetric_difference(ids)
+      |> Tracks.compare_tracks()
+      |> Enum.filter(&(&1.status == "complete"))
 
     payload =
       Enum.map(selected, fn track ->
@@ -35,11 +42,16 @@ defmodule TrackAnalyzerWeb.CompareLive do
         }
       end)
 
+    socket =
+      socket
+      |> assign(:selected_ids, ids)
+      |> assign(:comparison_json, json(payload))
+      |> stream(:selected, selected, reset: true)
+
     {:noreply,
-     socket
-     |> assign(:selected_ids, ids)
-     |> assign(:comparison_json, json(payload))
-     |> stream(:selected, selected, reset: true)}
+     Enum.reduce(changed_candidates, socket, fn track, socket ->
+       stream_insert(socket, :candidates, track)
+     end)}
   end
 
   @impl true
@@ -86,6 +98,8 @@ defmodule TrackAnalyzerWeb.CompareLive do
   defp compare_path([]), do: ~p"/compare"
   defp compare_path(ids), do: ~p"/compare?#{[ids: Enum.join(ids, ",")]}"
 
+  defp symmetric_difference(left, right), do: (left -- right) ++ (right -- left)
+
   defp divide(nil, _divisor), do: 0
   defp divide(number, divisor), do: number / divisor
   defp multiply(nil, _multiplier), do: 0
@@ -131,6 +145,7 @@ defmodule TrackAnalyzerWeb.CompareLive do
                 type="button"
                 phx-click="toggle"
                 phx-value-id={track.id}
+                aria-pressed={if(track.id in @selected_ids, do: "true", else: "false")}
                 class={[
                   "grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border p-3 text-left transition",
                   track.id in @selected_ids &&

@@ -88,6 +88,26 @@ defmodule TrackAnalyzerWeb.NavigationTest do
     assert has_element?(explore, "#explore-leaders")
   end
 
+  test "compare picker marks tracks as they are selected and removed", %{conn: conn} do
+    track = insert_track!(0, %{})
+    selector = "#compare-candidates button[phx-value-id='#{track.id}']"
+
+    {:ok, view, _html} = live(conn, ~p"/compare")
+    assert has_element?(view, "#{selector}[aria-pressed='false']")
+
+    view |> element(selector) |> render_click()
+
+    assert_patch(view, ~p"/compare?#{[ids: track.id]}")
+    assert has_element?(view, "#{selector}[aria-pressed='true']")
+    assert has_element?(view, "#remove-compare-#{track.id}")
+
+    view |> element(selector) |> render_click()
+
+    assert_patch(view, ~p"/compare")
+    assert has_element?(view, "#{selector}[aria-pressed='false']")
+    refute has_element?(view, "#remove-compare-#{track.id}")
+  end
+
   test "track detail exposes aligned map and profile interaction surfaces", %{conn: conn} do
     track = insert_track!(0, %{})
     insert_rendering!(track)
