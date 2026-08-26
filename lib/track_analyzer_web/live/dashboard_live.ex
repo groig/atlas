@@ -91,7 +91,7 @@ defmodule TrackAnalyzerWeb.DashboardLive do
     <Layouts.app flash={@flash} current_scope={nil} active="overview">
       <section
         id="dashboard-summary"
-        class="relative overflow-hidden rounded-[1.7rem] bg-[var(--ink)] px-5 py-5 text-[var(--canvas)] shadow-xl sm:px-7 sm:py-6"
+        class="relative overflow-hidden rounded-[1.7rem] border border-white/8 bg-[var(--hero)] px-5 py-5 text-[var(--hero-ink)] shadow-xl sm:px-7 sm:py-6"
       >
         <div class="contour-pattern absolute inset-0 opacity-25"></div>
         <div class="relative grid gap-5 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">

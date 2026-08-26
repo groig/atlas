@@ -19,6 +19,8 @@
   --canvas-raised: #fbfcf8;
   --surface: rgba(255, 255, 252, 0.88);
   --surface-strong: #ffffff;
+  --hero: #15231c;
+  --hero-ink: #f2f5ee;
   --ink: #15231c;
   --ink-muted: #637168;
   --line: rgba(28, 50, 39, 0.13);
@@ -37,6 +39,8 @@
   --canvas-raised: #111b16;
   --surface: rgba(18, 29, 23, 0.9);
   --surface-strong: #17241d;
+  --hero: #14231b;
+  --hero-ink: #eff7f0;
   --ink: #eff7f0;
   --ink-muted: #93a59a;
   --line: rgba(219, 241, 226, 0.12);
