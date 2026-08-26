@@ -21,7 +21,7 @@ defmodule TrackAnalyzerWeb.Layouts do
             aria-label="Track / Atlas"
             class="group flex shrink-0 items-center gap-2.5"
           >
-            <span class="grid size-9 place-items-center rounded-xl bg-[var(--ink)] text-[var(--accent)] shadow-sm transition group-hover:-rotate-3">
+            <span class="grid size-9 place-items-center rounded-xl border border-[var(--line)] bg-[var(--hero)] text-[var(--accent)] shadow-sm transition group-hover:-rotate-3">
               <.icon name="hero-map" class="size-5" />
             </span>
             <span class="hidden text-sm font-black tracking-[-0.03em] sm:block">Track / Atlas</span>
