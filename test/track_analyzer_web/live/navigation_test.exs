@@ -12,6 +12,7 @@ defmodule TrackAnalyzerWeb.NavigationTest do
     assert has_element?(view, "#analyzer-state")
     assert has_element?(view, "#portfolio-metrics")
     assert has_element?(view, "#primary-navigation")
+    assert has_element?(view, "#dashboard-speed-lab-shortcut[href='/speed']")
   end
 
   test "overview links each record and latest analysis to its source track", %{conn: conn} do

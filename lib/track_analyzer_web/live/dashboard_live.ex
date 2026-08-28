@@ -114,6 +114,13 @@ defmodule TrackAnalyzerWeb.DashboardLive do
               >
                 <.icon name="hero-share" class="size-4" /> Create recap
               </button>
+              <.link
+                id="dashboard-speed-lab-shortcut"
+                navigate={~p"/speed"}
+                class="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/8 px-3.5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/12 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+              >
+                <.icon name="hero-bolt" class="size-4 text-[var(--accent)]" /> Speed Lab
+              </.link>
             </div>
             <p class="mt-2 max-w-md text-sm leading-6 text-white/58">
               Analyzed OsmAnd tracks and current processing state.
