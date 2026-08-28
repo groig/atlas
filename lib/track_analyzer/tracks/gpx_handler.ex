@@ -9,6 +9,7 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
       text: "",
       creator: nil,
       name: nil,
+      activity_type: nil,
       track_position: -1,
       segment_position: -1,
       current_point: nil,
@@ -110,6 +111,22 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
     end
   end
 
+  defp capture_value("activity", text, state) do
+    if metadata_extension?(state) and text != "" do
+      %{state | activity_type: normalize_activity(text)}
+    else
+      state
+    end
+  end
+
+  defp capture_value("route", text, state) do
+    if is_nil(state.activity_type) and metadata_extension?(state) and text != "" do
+      %{state | activity_type: normalize_activity(text)}
+    else
+      state
+    end
+  end
+
   defp capture_value("ele", text, %{current_point: point} = state) when not is_nil(point) do
     %{state | current_point: Map.put(point, :elevation_m, parse_float(text))}
   end
@@ -137,6 +154,21 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
   end
 
   defp capture_value(_local_name, _text, state), do: state
+
+  defp metadata_extension?(state),
+    do: "metadata" in state.stack and "extensions" in state.stack
+
+  defp normalize_activity(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "_")
+    |> String.trim("_")
+    |> case do
+      "" -> nil
+      activity -> activity
+    end
+  end
 
   defp attribute(attributes, wanted) do
     Enum.find_value(attributes, fn {name, value} ->

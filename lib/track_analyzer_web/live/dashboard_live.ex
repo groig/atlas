@@ -2,12 +2,14 @@ defmodule TrackAnalyzerWeb.DashboardLive do
   use TrackAnalyzerWeb, :live_view
 
   alias TrackAnalyzer.{Imports, Tracks}
+  alias TrackAnalyzer.Tracks.RouteProgress
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Tracks.subscribe()
       Imports.subscribe()
+      RouteProgress.subscribe()
     end
 
     tracks = Tracks.list_tracks() |> Enum.take(8)
@@ -67,6 +69,9 @@ defmodule TrackAnalyzerWeb.DashboardLive do
 
   def handle_info({:batch_updated, _batch}, socket), do: {:noreply, socket}
 
+  def handle_info({:route_progress_rebuilt, _result}, socket),
+    do: {:noreply, assign_dashboard(socket)}
+
   defp valid_share_window?("week", seconds), do: seconds in (6 * 86_400)..(8 * 86_400)
   defp valid_share_window?("month", seconds), do: seconds in (27 * 86_400)..(32 * 86_400)
   defp valid_share_window?("year", seconds), do: seconds in (364 * 86_400)..(367 * 86_400)
@@ -74,12 +79,14 @@ defmodule TrackAnalyzerWeb.DashboardLive do
   defp assign_dashboard(socket) do
     summary = Tracks.portfolio_summary()
     speed_summary = Tracks.speed_history(%{"metric" => "100m", "range" => "all"})
+    progress_summary = RouteProgress.summary()
     cells = Tracks.heatmap_cells(3_000)
 
     socket
     |> assign(:summary, summary)
     |> assign(:latest_track, Tracks.latest_complete_track())
     |> assign(:speed_summary, speed_summary)
+    |> assign(:progress_summary, progress_summary)
     |> assign(:monthly_json, json(summary.monthly))
     |> assign(:cells_json, json(cells))
     |> assign(:has_map?, cells != [])
@@ -178,6 +185,33 @@ defmodule TrackAnalyzerWeb.DashboardLive do
           </div>
         </div>
       </section>
+
+      <.link
+        id="dashboard-progress-pulse"
+        navigate={~p"/progress"}
+        class="group mt-5 grid gap-4 rounded-[1.7rem] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-[var(--shadow)] transition hover:-translate-y-0.5 sm:grid-cols-[1fr_auto] sm:items-center sm:px-6"
+      >
+        <div class="flex items-center gap-4">
+          <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-[var(--accent)] text-[var(--accent-ink)] transition group-hover:rotate-3">
+            <.icon name="hero-arrow-trending-up" class="size-6" />
+          </span>
+          <div>
+            <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+              Progress pulse
+            </p>
+            <h2 class="mt-1 text-xl font-black tracking-[-0.035em]">
+              {@progress_summary.cluster_count} repeated routes · {@progress_summary.improving_count} faster signals
+            </h2>
+            <p class="mt-1 text-xs text-[var(--ink-muted)] sm:text-sm">
+              Compare like-for-like attempts, route sectors, weekly volume, and sustained efforts.
+            </p>
+          </div>
+        </div>
+        <span class="inline-flex items-center gap-2 text-sm font-black">
+          Open progress
+          <.icon name="hero-arrow-right" class="size-4 transition group-hover:translate-x-1" />
+        </span>
+      </.link>
 
       <section id="portfolio-metrics" class="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <.metric_card

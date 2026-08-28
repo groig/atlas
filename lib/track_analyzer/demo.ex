@@ -12,7 +12,7 @@ defmodule TrackAnalyzer.Demo do
   alias TrackAnalyzer.Repo
   alias TrackAnalyzer.Storage.Local
   alias TrackAnalyzer.Tracks
-  alias TrackAnalyzer.Tracks.{GeoMetrics, Track}
+  alias TrackAnalyzer.Tracks.{GeoMetrics, RouteProgress, Track}
   alias TrackAnalyzer.Workers.{AnalyzeTrackWorker, ArchiveWorker}
 
   @track_count 36
@@ -120,6 +120,7 @@ defmodule TrackAnalyzer.Demo do
         raise "synthetic analysis failed: #{inspect(analysis_results)}"
       end
 
+      {:ok, _route_progress} = RouteProgress.rebuild()
       assert_safe_dataset!()
     after
       _ = File.rm(temporary_path)
@@ -229,7 +230,7 @@ defmodule TrackAnalyzer.Demo do
     """
     <?xml version="1.0" encoding="UTF-8"?>
     <gpx version="1.1" creator="Track Atlas synthetic demo" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net">
-      <metadata><name>#{name}</name></metadata>
+      <metadata><name>#{name}</name><extensions><osmand:activity>cycling</osmand:activity></extensions></metadata>
       <trk><name>#{name}</name><trkseg>
     #{track_points}
       </trkseg></trk>

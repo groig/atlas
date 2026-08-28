@@ -5,7 +5,7 @@ defmodule TrackAnalyzer.TrackFixture do
     """
     <?xml version="1.0" encoding="UTF-8"?>
     <gpx version="1.1" creator="OsmAnd test" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net">
-      <metadata><name>Morning Loop</name></metadata>
+      <metadata><name>Morning Loop</name><extensions><osmand:activity>cycling</osmand:activity></extensions></metadata>
       <trk><name>Morning Loop</name><trkseg>
         <trkpt lat="55.676100" lon="12.568300"><ele>12.0</ele><time>2025-01-15T08:00:00Z</time><hdop>2.0</hdop><extensions><osmand:speed>4.0</osmand:speed></extensions></trkpt>
         <trkpt lat="55.677100" lon="12.569300"><ele>18.0</ele><time>2025-01-15T08:00:30Z</time><hdop>2.5</hdop><extensions><osmand:speed>5.0</osmand:speed></extensions></trkpt>

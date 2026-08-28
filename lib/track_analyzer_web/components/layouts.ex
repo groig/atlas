@@ -45,10 +45,10 @@ defmodule TrackAnalyzerWeb.Layouts do
               active={@active == "tracks"}
             />
             <.nav_link
-              to={~p"/speed"}
-              icon="hero-bolt"
-              label="Speed"
-              active={@active == "speed"}
+              to={~p"/progress"}
+              icon="hero-arrow-trending-up"
+              label="Progress"
+              active={@active == "progress"}
             />
             <.nav_link
               to={~p"/explore"}

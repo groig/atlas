@@ -27,6 +27,8 @@ defmodule TrackAnalyzerWeb.Router do
     live "/tracks", TrackIndexLive
     live "/tracks/:id", TrackShowLive
     live "/speed", SpeedLive
+    live "/progress", ProgressLive
+    live "/progress/routes/:id", RouteProgressLive
     live "/explore", ExploreLive
     live "/compare", CompareLive
   end

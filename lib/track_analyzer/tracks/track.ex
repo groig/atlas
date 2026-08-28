@@ -9,6 +9,7 @@ defmodule TrackAnalyzer.Tracks.Track do
     field :source_folder, :string
     field :name, :string
     field :creator, :string
+    field :activity_type, :string
     field :status, :string, default: "queued"
     field :stage, :string, default: "Queued"
     field :progress, :integer, default: 0
@@ -46,6 +47,7 @@ defmodule TrackAnalyzer.Tracks.Track do
     has_many :events, TrackAnalyzer.Tracks.AnalysisEvent
     has_many :splits, TrackAnalyzer.Tracks.Split
     has_many :renderings, TrackAnalyzer.Tracks.Rendering
+    has_one :route_cluster_membership, TrackAnalyzer.Tracks.RouteClusterMembership
     timestamps(type: :utc_datetime_usec)
   end
 
@@ -58,6 +60,7 @@ defmodule TrackAnalyzer.Tracks.Track do
       :source_folder,
       :name,
       :creator,
+      :activity_type,
       :status,
       :stage,
       :progress,

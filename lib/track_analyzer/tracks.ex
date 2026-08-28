@@ -166,6 +166,14 @@ defmodule TrackAnalyzer.Tracks do
     {:ok, %{stale_count: length(track_ids), enqueued_count: inserted}}
   end
 
+  def stale_analysis_count do
+    Repo.aggregate(
+      from(track in Track, where: track.analysis_version < ^Analyzer.analysis_version()),
+      :count,
+      :id
+    )
+  end
+
   def update_status(%Track{} = track, attrs) do
     track
     |> Track.changeset(attrs)
@@ -193,6 +201,7 @@ defmodule TrackAnalyzer.Tracks do
         analysis_version: Analyzer.analysis_version(),
         name: summary.name || track.name,
         creator: summary.creator,
+        activity_type: summary.activity_type,
         timezone: summary.timezone,
         started_at: summary.started_at,
         ended_at: summary.ended_at,

@@ -4,6 +4,8 @@ Track / Atlas is a self-hosted application for turning an OsmAnd track library i
 
 ![Track / Atlas overview with portfolio metrics, speed records, and a route heatmap](docs/screenshots/overview.png)
 
+![Progress dashboard with repeated-route signals, weekly volume, and sustained-speed trends](docs/screenshots/progress.png)
+
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/speed-lab.png" alt="Speed history with sustained-effort records and a historical speed chart"></td>
@@ -28,6 +30,9 @@ Track / Atlas is a self-hosted application for turning an OsmAnd track library i
 - Distance, elapsed/moving/stopped time, average speed, and confidence-rated maximum speed
 - Best sustained 100 m and 500 m speeds, personal records, and track-linked leaderboards
 - Speed history with every-track scatter, rolling medians, cumulative records, and time filters
+- Automatic matching of repeated routes, with faster/slower/steady signals that account for normal variation
+- Route-specific speed history, latest-versus-prior comparisons, and synchronized 10-sector map analysis
+- Twelve-week training volume, weekly streaks, and recent 100 m and 500 m effort trends
 - Elevation gain/loss, elevation range, sustained climbs, stopped periods, and kilometer splits
 - Best 100 m, 500 m, 1 km, 5 km, 10 km, 20 km, and 40 km efforts
 - Route shape, displacement, sinuosity, loop resemblance, sample cadence, and dominant bearing
@@ -36,6 +41,8 @@ Track / Atlas is a self-hosted application for turning an OsmAnd track library i
 - Story-sized PNG recaps for all time, the current year, month, or week
 
 Maps and charts use compact precomputed renderings, so the interface stays responsive even with a large library.
+
+Progress signals are deliberately factual rather than diagnostic. They describe changes in recorded performance on similar routes; traffic, stops, weather, equipment, and GPS quality can still affect the result.
 
 ## Getting tracks out of OsmAnd
 
@@ -70,11 +77,13 @@ Open [http://localhost:4000](http://localhost:4000), choose **Upload**, and sele
 
 Uploads and analysis continue in the background. You can leave the import screen after each browser upload reaches 100%; progress remains visible on Overview and Import.
 
+Route matching is also asynchronous. It runs after track analysis settles, so importing a large library does not block the interface or rebuild route groups hundreds of times at once.
+
 ## Using the app
 
 - **Overview** shows library totals, current processing, speed records, route coverage, and recent tracks.
 - **Tracks** provides the searchable analyzed library and links to every track detail.
-- **Speed** focuses on historical maximum and sustained-speed behavior.
+- **Progress** compares repeated routes, route sectors, weekly volume, and sustained-speed trends. Its **Speed history** link opens the full maximum and sustained-speed record lab.
 - **Explore** shows coverage, overlap, quality, and distance leaders.
 - **Compare** places up to four tracks on the same normalized performance view.
 - **Create recap** on Overview builds a 1080×1920 PNG for Instagram Stories or WhatsApp Status. Choose All time, This year, This month, or This week, then use the device share sheet or download the image.
@@ -112,6 +121,8 @@ mix track_analyzer.reanalyze --stale
 ```
 
 Individual tracks can also be reanalyzed from their detail screen.
+
+Progress shows an **Upgrade** action when older tracks need the newest analysis fields, and **Rebuild matches** is available whenever you want to refresh route grouping immediately.
 
 ## Development checks
 

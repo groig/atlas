@@ -2,6 +2,7 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
   use TrackAnalyzerWeb, :live_view
 
   alias TrackAnalyzer.Tracks
+  alias TrackAnalyzer.Tracks.RouteProgress
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -48,6 +49,7 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
     |> assign(:rendering, rendering)
     |> assign(:polyline, if(rendering, do: rendering.encoded_polyline, else: ""))
     |> assign(:series_json, json(if(rendering, do: rendering.series, else: %{})))
+    |> assign(:route_match, RouteProgress.matched_cluster_for_track(track.id))
     |> assign(:complete?, track.status in ["complete", "insufficient_data"])
   end
 
@@ -174,6 +176,34 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
             note="sustained"
           />
         </section>
+
+        <.link
+          :if={@route_match}
+          id="track-matched-route"
+          navigate={~p"/progress/routes/#{@route_match.route_cluster.id}"}
+          class="group mt-5 flex flex-wrap items-center justify-between gap-4 rounded-[1.5rem] bg-[var(--accent)] p-5 text-[var(--accent-ink)] shadow-lg transition hover:-translate-y-0.5 sm:px-6"
+        >
+          <div class="flex items-center gap-4">
+            <span class="grid size-11 shrink-0 place-items-center rounded-xl bg-black/8">
+              <.icon name="hero-map-pin" class="size-5" />
+            </span>
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-[0.15em] opacity-55">
+                Matched route
+              </p>
+              <p class="mt-1 text-lg font-black">{@route_match.route_cluster.name}</p>
+              <p class="mt-1 text-xs opacity-60">
+                {@route_match.route_cluster.track_count} attempts · {percent(
+                  @route_match.similarity * 100
+                )} geometry match · {status_label(@route_match.route_cluster.trend.direction)} signal
+              </p>
+            </div>
+          </div>
+          <span class="inline-flex items-center gap-2 text-sm font-black">
+            Compare attempts
+            <.icon name="hero-arrow-right" class="size-4 transition group-hover:translate-x-1" />
+          </span>
+        </.link>
 
         <section class="mt-5 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
           <div class="topo-card overflow-hidden rounded-[1.7rem]">

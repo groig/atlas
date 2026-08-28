@@ -442,6 +442,238 @@ const SpeedHistoryChart = {
   },
 }
 
+const ProgressVolumeChart = {
+  mounted() {
+    if(this.resize) window.removeEventListener("resize", this.resize)
+    this.chart?.dispose()
+    const volume = JSON.parse(this.el.dataset.volume || "{}")
+    const rows = volume.weeks || []
+    const colors = chartColors()
+    this.chart = echarts.init(this.el, null, {renderer: "canvas"})
+    this.chart.setOption({
+      animationDuration: 650,
+      grid: {left: 54, right: 18, top: 24, bottom: 42},
+      tooltip: {
+        trigger: "axis",
+        formatter: params => {
+          const row = rows[params[0]?.dataIndex]
+          if(!row) return ""
+          const date = new Date(`${row.week}T00:00:00`).toLocaleDateString(undefined, {month: "short", day: "numeric"})
+          return `<strong>Week of ${date}</strong><div style="margin-top:7px">${(row.distance_m / 1000).toFixed(1)} km · ${row.track_count} track${row.track_count === 1 ? "" : "s"}</div>`
+        },
+      },
+      xAxis: {
+        type: "category",
+        data: rows.map(row => row.week),
+        axisLabel: {color: colors.muted, formatter: value => new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {month: "short", day: "numeric"}), hideOverlap: true},
+        axisLine: {lineStyle: {color: colors.line}},
+      },
+      yAxis: {
+        type: "value",
+        name: "km",
+        axisLabel: {color: colors.muted},
+        splitLine: {lineStyle: {color: colors.line}},
+      },
+      series: [{
+        name: "Distance",
+        type: "bar",
+        data: rows.map(row => Math.round(row.distance_m / 100) / 10),
+        itemStyle: {color: colors.accent, borderRadius: [7, 7, 2, 2]},
+        emphasis: {itemStyle: {color: colors.speed}},
+      }],
+    })
+    this.resize = () => this.chart.resize()
+    window.addEventListener("resize", this.resize)
+  },
+  updated() { this.mounted() },
+  destroyed() {
+    window.removeEventListener("resize", this.resize)
+    this.chart?.dispose()
+  },
+}
+
+const routeSectorEvent = "track-atlas:route-sector"
+const dispatchRouteSector = (sector, mode = "preview") =>
+  window.dispatchEvent(new CustomEvent(routeSectorEvent, {detail: {sector, mode}}))
+
+window.addEventListener("route-sector:select", event => dispatchRouteSector(Number(event.detail?.sector), "pin"))
+
+const routeSectorColor = direction => {
+  if(direction === "faster") return "#34c784"
+  if(direction === "slower") return "#ff8752"
+  return "#27d9c2"
+}
+
+const RouteProgressMap = {
+  mounted() {
+    if(this.focusHandler) window.removeEventListener(routeSectorEvent, this.focusHandler)
+    this.map?.remove()
+    this.el.replaceChildren()
+    this.points = polyline.decode(this.el.dataset.polyline || "")
+    this.sectors = JSON.parse(this.el.dataset.sectors || "[]")
+    this.lines = []
+    this.pinnedSector = null
+    this.map = L.map(this.el, {zoomControl: true, preferCanvas: true})
+    tileLayer(this.el).addTo(this.map)
+
+    if(this.points.length > 0) {
+      const cumulative = [0]
+      for(let index = 1; index < this.points.length; index += 1) {
+        const prior = L.latLng(this.points[index - 1])
+        const current = L.latLng(this.points[index])
+        cumulative.push(cumulative[index - 1] + prior.distanceTo(current))
+      }
+      const totalDistance = cumulative[cumulative.length - 1]
+      const indexAtDistance = target => {
+        const found = cumulative.findIndex(distance => distance >= target)
+        return found === -1 ? this.points.length - 1 : found
+      }
+
+      for(let index = 0; index < 10; index += 1) {
+        const start = indexAtDistance(totalDistance * index / 10)
+        const end = Math.max(indexAtDistance(totalDistance * (index + 1) / 10), start + 1)
+        const segment = this.points.slice(start, Math.min(end + 1, this.points.length))
+        const sector = this.sectors[index] || {direction: "steady"}
+        const line = L.polyline(segment, {
+          color: routeSectorColor(sector.direction),
+          weight: 6,
+          opacity: 0.9,
+          lineCap: "round",
+          lineJoin: "round",
+        }).addTo(this.map)
+        line.on("mouseover", () => dispatchRouteSector(index + 1, "preview"))
+        line.on("mouseout", () => dispatchRouteSector(this.pinnedSector, this.pinnedSector ? "pin" : "clear"))
+        line.on("click", () => {
+          this.pinnedSector = this.pinnedSector === index + 1 ? null : index + 1
+          dispatchRouteSector(this.pinnedSector, this.pinnedSector ? "pin" : "clear")
+        })
+        this.lines.push(line)
+      }
+      this.map.fitBounds(L.latLngBounds(this.points), {padding: [24, 24], maxZoom: 16})
+      L.marker(this.points[0], {icon: markerIcon("start")}).addTo(this.map)
+      L.marker(this.points[this.points.length - 1], {icon: markerIcon("finish")}).addTo(this.map)
+    } else {
+      this.map.setView([20, 0], 2)
+    }
+
+    this.focusHandler = ({detail}) => {
+      if(detail.mode === "pin") this.pinnedSector = detail.sector
+      if(detail.mode === "clear") this.pinnedSector = null
+      this.lines.forEach((line, index) => {
+        const active = detail.sector === index + 1
+        line.setStyle({weight: active ? 11 : 6, opacity: active ? 1 : (detail.sector ? 0.28 : 0.9)})
+        if(active) line.bringToFront()
+      })
+    }
+    window.addEventListener(routeSectorEvent, this.focusHandler)
+    requestAnimationFrame(() => this.map.invalidateSize())
+  },
+  updated() { this.mounted() },
+  destroyed() {
+    window.removeEventListener(routeSectorEvent, this.focusHandler)
+    this.map?.remove()
+  },
+}
+
+const RouteSectorChart = {
+  mounted() {
+    this.cleanup()
+    const rows = JSON.parse(this.el.dataset.sectors || "[]")
+    const colors = chartColors()
+    this.chart = echarts.init(this.el, null, {renderer: "canvas"})
+    this.chart.setOption({
+      animationDuration: 650,
+      grid: {left: 48, right: 16, top: 22, bottom: 38},
+      tooltip: {
+        trigger: "axis",
+        formatter: params => {
+          const row = rows[params[0]?.dataIndex]
+          if(!row) return ""
+          const delta = row.delta_percent == null ? "—" : `${row.delta_percent > 0 ? "+" : ""}${row.delta_percent.toFixed(1)}%`
+          return `<strong>Sector ${row.number}</strong><div style="margin-top:7px">Latest ${row.latest_speed_mps == null ? "—" : (row.latest_speed_mps * 3.6).toFixed(1) + " km/h"}</div><div>Prior median ${row.baseline_speed_mps == null ? "—" : (row.baseline_speed_mps * 3.6).toFixed(1) + " km/h"}</div><div style="margin-top:4px"><strong>${delta}</strong></div>`
+        },
+      },
+      xAxis: {type: "category", data: rows.map(row => `S${row.number}`), axisLabel: {color: colors.muted}, axisLine: {lineStyle: {color: colors.line}}},
+      yAxis: {type: "value", name: "%", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+      series: [{
+        type: "bar",
+        data: rows.map(row => ({value: row.delta_percent, itemStyle: {color: routeSectorColor(row.direction), borderRadius: row.delta_percent >= 0 ? [6, 6, 0, 0] : [0, 0, 6, 6]}})),
+        markArea: {silent: true, itemStyle: {color: `${colors.muted}10`}, data: [[{yAxis: -2}, {yAxis: 2}]]},
+      }],
+    })
+    this.overHandler = params => dispatchRouteSector(params.dataIndex + 1, "preview")
+    this.outHandler = () => dispatchRouteSector(null, "clear")
+    this.clickHandler = params => dispatchRouteSector(params.dataIndex + 1, "pin")
+    this.chart.on("mouseover", this.overHandler)
+    this.chart.on("mouseout", this.outHandler)
+    this.chart.on("click", this.clickHandler)
+    this.focusHandler = ({detail}) => {
+      this.chart.dispatchAction({type: "downplay", seriesIndex: 0})
+      if(detail.sector) this.chart.dispatchAction({type: "highlight", seriesIndex: 0, dataIndex: detail.sector - 1})
+    }
+    window.addEventListener(routeSectorEvent, this.focusHandler)
+    this.resize = () => this.chart.resize()
+    window.addEventListener("resize", this.resize)
+  },
+  updated() { this.mounted() },
+  cleanup() {
+    if(this.resize) window.removeEventListener("resize", this.resize)
+    if(this.focusHandler) window.removeEventListener(routeSectorEvent, this.focusHandler)
+    if(this.overHandler) this.chart?.off("mouseover", this.overHandler)
+    if(this.outHandler) this.chart?.off("mouseout", this.outHandler)
+    if(this.clickHandler) this.chart?.off("click", this.clickHandler)
+    this.chart?.dispose()
+  },
+  destroyed() { this.cleanup() },
+}
+
+const RouteTrendChart = {
+  mounted() {
+    if(this.resize) window.removeEventListener("resize", this.resize)
+    this.chart?.dispose()
+    const rows = JSON.parse(this.el.dataset.history || "[]")
+    const colors = chartColors()
+    this.chart = echarts.init(this.el, null, {renderer: "canvas"})
+    this.chart.setOption({
+      animationDuration: 650,
+      grid: {left: 60, right: 24, top: 28, bottom: 50},
+      tooltip: {
+        trigger: "axis",
+        formatter: params => {
+          const row = rows[params[0]?.dataIndex]
+          if(!row) return ""
+          const date = new Date(row.started_at).toLocaleDateString(undefined, {month: "short", day: "numeric", year: "numeric"})
+          return `<strong>${row.name}</strong><div style="opacity:.65;margin:2px 0 7px">${date}</div><div>${row.avg_speed_kmh.toFixed(1)} km/h · ${row.distance_km.toFixed(1)} km</div><div style="margin-top:5px;opacity:.65">Click to open track</div>`
+        },
+      },
+      xAxis: {type: "time", axisLabel: {color: colors.muted}, axisLine: {lineStyle: {color: colors.line}}, splitLine: {show: false}},
+      yAxis: {type: "value", name: "km/h", scale: true, axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+      series: [{
+        type: "line",
+        data: rows.map(row => ({value: [row.started_at, row.avg_speed_kmh], trackId: row.track_id, name: row.name})),
+        symbolSize: 10,
+        showSymbol: true,
+        smooth: 0.18,
+        lineStyle: {width: 3, color: colors.speed},
+        itemStyle: {color: colors.accent, borderColor: colors.ink, borderWidth: 2},
+        emphasis: {scale: 1.5},
+      }],
+    })
+    this.clickHandler = params => {
+      if(params.data?.trackId) window.location.assign(`/tracks/${params.data.trackId}`)
+    }
+    this.chart.on("click", this.clickHandler)
+    this.resize = () => this.chart.resize()
+    window.addEventListener("resize", this.resize)
+  },
+  updated() { this.mounted() },
+  destroyed() {
+    window.removeEventListener("resize", this.resize)
+    if(this.clickHandler) this.chart?.off("click", this.clickHandler)
+    this.chart?.dispose()
+  },
+}
+
 const CompareChart = {
   mounted() {
     if(this.resize) window.removeEventListener("resize", this.resize)
@@ -491,7 +723,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, TrackMap, HeatMap, TrackChart, MonthlyChart, SpeedHistoryChart, CompareChart, ShareCard},
+  hooks: {...colocatedHooks, TrackMap, HeatMap, TrackChart, MonthlyChart, SpeedHistoryChart, ProgressVolumeChart, RouteProgressMap, RouteSectorChart, RouteTrendChart, CompareChart, ShareCard},
 })
 
 // Show progress bar on live navigation and form submits

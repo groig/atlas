@@ -5,7 +5,7 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
 
   alias TrackAnalyzer.Tracks.GeoMetrics
 
-  @analysis_version 2
+  @analysis_version 3
   @effort_distances [100, 500, 1_000, 5_000, 10_000, 20_000, 40_000]
 
   def analysis_version, do: @analysis_version
@@ -160,6 +160,7 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
       analysis_version: @analysis_version,
       name: parsed.name,
       creator: parsed.creator,
+      activity_type: Map.get(parsed, :activity_type),
       point_count: point_count,
       segment_count: parsed.segments |> Enum.uniq() |> length(),
       distance_m: distance_m,

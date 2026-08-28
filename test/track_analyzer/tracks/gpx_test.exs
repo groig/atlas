@@ -11,6 +11,7 @@ defmodule TrackAnalyzer.Tracks.GPXTest do
     assert {:ok, parsed} = GPX.parse_file(path)
     assert parsed.name == "Morning Loop"
     assert parsed.creator == "OsmAnd test"
+    assert parsed.activity_type == "cycling"
     assert length(parsed.points) == 3
 
     assert Enum.all?(parsed.points, fn point ->
@@ -26,7 +27,8 @@ defmodule TrackAnalyzer.Tracks.GPXTest do
     assert analysis.summary.distance_m > 250
     assert analysis.summary.elevation_gain_m == 6.0
     assert analysis.summary.quality_score == 100.0
-    assert analysis.summary.analysis_version == 2
+    assert analysis.summary.analysis_version == Analyzer.analysis_version()
+    assert analysis.summary.activity_type == "cycling"
     assert analysis.summary.max_speed_mps > 0
     assert analysis.summary.best_100m_speed_mps > 0
     assert analysis.summary.best_500m_speed_mps == nil
@@ -46,5 +48,23 @@ defmodule TrackAnalyzer.Tracks.GPXTest do
     path = Path.join(directory, "unsafe.gpx")
     File.write!(path, "<!DOCTYPE gpx><gpx></gpx>")
     assert {:error, :doctype_not_allowed} = GPX.parse_file(path)
+  end
+
+  @tag :tmp_dir
+  test "uses OsmAnd route metadata when activity metadata is absent", %{tmp_dir: directory} do
+    path = Path.join(directory, "route-fallback.gpx")
+
+    File.write!(
+      path,
+      """
+      <gpx version="1.1" creator="OsmAnd" xmlns:osmand="https://osmand.net">
+        <metadata><extensions><osmand:route>Mountain Bike</osmand:route></extensions></metadata>
+        <trk><trkseg><trkpt lat="55.0" lon="12.0" /></trkseg></trk>
+      </gpx>
+      """
+    )
+
+    assert {:ok, parsed} = GPX.parse_file(path)
+    assert parsed.activity_type == "mountain_bike"
   end
 end

@@ -42,6 +42,7 @@ defmodule TrackAnalyzer.Tracks.GPX do
      %{
        name: state.name || default_name,
        creator: state.creator,
+       activity_type: state.activity_type,
        segments: Enum.reverse(state.segments),
        points: points,
        warnings: Enum.reverse(state.warnings),

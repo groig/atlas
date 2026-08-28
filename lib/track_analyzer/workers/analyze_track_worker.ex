@@ -59,6 +59,7 @@ defmodule TrackAnalyzer.Workers.AnalyzeTrackWorker do
         if track.status == "insufficient_data", do: "insufficient_data", else: "complete"
 
       Imports.mark_track_items(track.id, item_status)
+      schedule_route_progress_rebuild()
       :ok
     else
       {:error, reason} -> fail_track(track, reason)
@@ -85,4 +86,11 @@ defmodule TrackAnalyzer.Workers.AnalyzeTrackWorker do
   defp error_text(%Ecto.Changeset{} = changeset), do: inspect(changeset.errors)
   defp error_text(%{__exception__: true} = error), do: Exception.message(error)
   defp error_text(reason), do: inspect(reason)
+
+  defp schedule_route_progress_rebuild do
+    case TrackAnalyzer.Tracks.RouteProgress.enqueue_rebuild(delay: 15, reason: "track_analyzed") do
+      {:ok, _job} -> :ok
+      {:error, _changeset} -> :ok
+    end
+  end
 end
