@@ -232,17 +232,14 @@ const drawBackground = context => {
   }
 }
 
-const drawMetricCard = (context, x, y, width, height, title, value, note, accent) => {
+const drawMetricCard = (context, x, y, width, height, title, value, accent) => {
   fillRoundRect(context, x, y, width, height, 30, palette.surface)
   context.fillStyle = accent
   context.fillRect(x, y, 8, height)
-  label(context, title, x + 30, y + 48, palette.muted, 20)
+  label(context, title, x + 30, y + 76, palette.muted, 20)
   fitText(context, value, width - 60, 900, 48, 30)
   context.fillStyle = palette.ink
-  context.fillText(value, x + 30, y + 113)
-  font(context, 600, 20)
-  context.fillStyle = palette.muted
-  context.fillText(note, x + 30, y + 151)
+  context.fillText(value, x + 30, y + 151)
 }
 
 const drawSpeedLedger = (context, summary) => {
@@ -252,9 +249,6 @@ const drawSpeedLedger = (context, summary) => {
   const height = 286
   fillRoundRect(context, x, y, width, height, 38, palette.surface)
   label(context, "Speed ledger", x + 36, y + 52, palette.orange, 22)
-  font(context, 650, 21)
-  context.fillStyle = palette.muted
-  context.fillText("Confidence-aware peaks and sustained efforts", x + 36, y + 88)
 
   const values = [
     ["Moving avg", speed(summary.avg_speed_mps)],
@@ -268,12 +262,12 @@ const drawSpeedLedger = (context, summary) => {
     const columnX = x + 36 + index * columnWidth
     if(index > 0) {
       context.fillStyle = palette.line
-      context.fillRect(columnX - 18, y + 126, 2, 112)
+      context.fillRect(columnX - 18, y + 93, 2, 130)
     }
-    label(context, title, columnX, y + 160, palette.muted, 16)
+    label(context, title, columnX, y + 122, palette.muted, 16)
     fitText(context, value, columnWidth - 32, 900, 34, 23)
     context.fillStyle = palette.ink
-    context.fillText(value, columnX, y + 213)
+    context.fillText(value, columnX, y + 179)
   })
 }
 
@@ -401,22 +395,13 @@ const renderRecap = (canvas, summary, period, bounds, now = new Date()) => {
     context.fillStyle = palette.muted
     context.fillText("DISTANCE EXPLORED", 76, 442)
 
-    drawMetricCard(context, 72, 520, 296, 230, "Tracks", Number(summary.track_count).toLocaleString(), "completed analyses", palette.accent)
-    drawMetricCard(context, 392, 520, 296, 230, "Moving", duration(summary.moving_s), "stops excluded", palette.cyan)
-    drawMetricCard(context, 712, 520, 296, 230, "Elevation", elevation(summary.elevation_gain_m), "noise-filtered ascent", palette.orange)
+    drawMetricCard(context, 72, 520, 296, 230, "Tracks", Number(summary.track_count).toLocaleString(), palette.accent)
+    drawMetricCard(context, 392, 520, 296, 230, "Moving", duration(summary.moving_s), palette.cyan)
+    drawMetricCard(context, 712, 520, 296, 230, "Elevation", elevation(summary.elevation_gain_m), palette.orange)
     drawSpeedLedger(context, summary)
     drawRhythm(context, rhythm, activeDays, period)
     drawHighlights(context, summary)
   }
-
-  context.fillStyle = palette.line
-  context.fillRect(72, 1792, 936, 2)
-  label(context, "Analyzed locally", 72, 1845, palette.muted, 17)
-  font(context, 800, 20)
-  context.fillStyle = palette.ink
-  context.textAlign = "right"
-  context.fillText("TRACK / ATLAS", WIDTH - 72, 1845)
-  context.textAlign = "left"
 
   canvas.setAttribute("aria-label", `${periodText}. ${summary.track_count} analyzed tracks, ${distance(summary.distance_m)} explored.`)
 }
