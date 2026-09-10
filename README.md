@@ -33,6 +33,8 @@ Track / Atlas is a self-hosted application for turning an OsmAnd track library i
 - Automatic matching of repeated routes, with faster/slower/steady signals that account for normal variation
 - Route-specific speed history, latest-versus-prior comparisons, and synchronized 10-sector map analysis
 - Twelve-week training volume, weekly streaks, and recent 100 m and 500 m effort trends
+- Heart-rate timelines synchronized with the route map, interval selection, time distributions, and sustained 1/5/10/20-minute averages
+- Same-route speed-versus-HR comparisons, cautious longer-term effort signals, and optional intensity bands with recorded-load history
 - Elevation gain/loss, elevation range, sustained climbs, stopped periods, and kilometer splits
 - Best 100 m, 500 m, 1 km, 5 km, 10 km, 20 km, and 40 km efforts
 - Route shape, displacement, sinuosity, loop resemblance, sample cadence, and dominant bearing
@@ -83,12 +85,26 @@ Route matching is also asynchronous. It runs after track analysis settles, so im
 
 - **Overview** shows library totals, current processing, speed records, route coverage, and recent tracks.
 - **Tracks** provides the searchable analyzed library and links to every track detail.
-- **Progress** compares repeated routes, route sectors, weekly volume, and sustained-speed trends. Its **Speed history** link opens the full maximum and sustained-speed record lab.
+- **Progress** compares repeated routes, route sectors, weekly volume, and sustained-speed trends. Its **Heart rate** tab shows recorded effort and route-matched HR comparisons; **Speed history** opens the full maximum and sustained-speed record lab.
 - **Explore** shows coverage, overlap, quality, and distance leaders.
 - **Compare** places up to four tracks on the same normalized performance view.
 - **Create recap** on Overview builds a 1080×1920 PNG for Instagram Stories or WhatsApp Status. Choose All time, This year, This month, or This week, then use the device share sheet or download the image.
 
 Recaps are rendered in the browser and are not stored by Track / Atlas. They contain aggregate values only—no maps, route shapes, coordinates, track names, filenames, or exact activity times.
+
+## Heart rate
+
+Connect a heart-rate sensor to OsmAnd when recording, then import the usual OSF export. Tracks that contain HR automatically gain an effort profile; tracks without it keep their existing analysis.
+
+On a track, hover over the HR or speed chart to trace the same position on the map. Click or tap to pin it. Switch between time and distance, drag to select an interval, or enter its start/end minutes. The selected section shows distance, speed, average/peak HR, and HR change. The sustained-HR cards open their original intervals. Higher HR is an observation, not a record to chase.
+
+**Progress → Heart rate** shows weekly recorded time and comparisons on repeated routes in the same direction. Comparisons exclude warm-up, the first minute after stops, gaps, and suspect transitions. A longer-term signal needs six comparable attempts across at least 14 days. Wind, heat, fatigue, traffic, and sensor error can still explain differences.
+
+No setup is needed for absolute BPM analysis. Optionally configure a known maximum HR or your own five intensity bands to see time in bands and rolling 7/28-day recorded load. Load is simply band minutes weighted 1–5; it is not TSS or a recovery recommendation. Missing HR remains unavailable, and changing bands recalculates past load in the background.
+
+HR stays local and is not included in social recaps. See [how HR analysis works](docs/heart-rate.md) for the calculation rules and limitations.
+
+![Heart-rate and speed profiles with a selected interval and its effort summary](docs/screenshots/heart-rate.png)
 
 ## Privacy and storage
 

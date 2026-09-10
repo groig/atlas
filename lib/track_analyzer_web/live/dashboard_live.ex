@@ -87,6 +87,7 @@ defmodule TrackAnalyzerWeb.DashboardLive do
     |> assign(:latest_track, Tracks.latest_complete_track())
     |> assign(:speed_summary, speed_summary)
     |> assign(:progress_summary, progress_summary)
+    |> assign(:hr_count, TrackAnalyzer.Tracks.HeartRates.count())
     |> assign(:monthly_json, json(summary.monthly))
     |> assign(:cells_json, json(cells))
     |> assign(:has_map?, cells != [])
@@ -192,6 +193,20 @@ defmodule TrackAnalyzerWeb.DashboardLive do
           </div>
         </div>
       </section>
+
+      <.link
+        :if={@hr_count > 0}
+        id="dashboard-heart-rate"
+        navigate={~p"/progress/heart-rate"}
+        class="group mt-5 flex items-center justify-between gap-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-5 py-4 transition hover:border-[var(--heart-rate)]"
+      >
+        <span class="flex items-center gap-3"><.icon
+          name="hero-heart"
+          class="size-5 text-[var(--heart-rate)]"
+        /><span class="text-sm font-bold">Heart rate
+        <span class="ml-2 font-normal text-[var(--ink-muted)]">{@hr_count} recorded tracks · effort & route comparisons</span></span></span>
+        <.icon name="hero-arrow-right" class="size-4 shrink-0 transition group-hover:translate-x-1" />
+      </.link>
 
       <.link
         id="dashboard-progress-pulse"

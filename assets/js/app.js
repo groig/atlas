@@ -29,6 +29,7 @@ import "leaflet.heat"
 import polyline from "@mapbox/polyline"
 import * as echarts from "echarts"
 import {ShareCard} from "./share_card"
+import {createHeartRateHooks} from "./heart_rate"
 
 const systemTheme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
 const setTheme = theme => {
@@ -74,6 +75,7 @@ const profileFocusTooltip = (focus, pinned) => {
     profileMetric(focus.distanceKm, "km", 2),
     profileMetric(focus.elevationM, "m"),
     profileMetric(focus.speedKmh, "km/h"),
+    profileMetric(focus.heartRateBpm, "bpm", 0),
   ].filter(Boolean)
   const state = pinned ? `<span class="track-focus-state">Pinned</span>` : ""
   return `${state}<strong>${values.shift() || "Track position"}</strong>${values.length > 0 ? `<span>${values.join(" · ")}</span>` : ""}`
@@ -82,6 +84,7 @@ const profileFocusTooltip = (focus, pinned) => {
 const TrackMap = {
   mounted() {
     if(this.focusHandler) window.removeEventListener(profileFocusEvent, this.focusHandler)
+    this.themeObserver?.disconnect()
     this.map?.remove()
     this.el.replaceChildren()
     this.points = polyline.decode(this.el.dataset.polyline || "")
@@ -89,6 +92,7 @@ const TrackMap = {
     this.cursor = null
     this.focusCasing = null
     this.focusLine = null
+    this.currentFocus = null
     this.map = L.map(this.el, {zoomControl: true, preferCanvas: true})
     tileLayer(this.el).addTo(this.map)
 
@@ -121,9 +125,16 @@ const TrackMap = {
       }
     }
     window.addEventListener(profileFocusEvent, this.focusHandler)
+    this.themeObserver = new MutationObserver(() => {
+      this.line?.setStyle({color: chartColors().speed})
+      if(this.currentFocus) this.renderFocus(this.currentFocus, this.currentPinned)
+    })
+    this.themeObserver.observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]})
     requestAnimationFrame(() => this.map.invalidateSize())
   },
   renderFocus(focus, pinned) {
+    this.currentFocus = focus
+    this.currentPinned = pinned
     const index = Math.max(0, Math.min(focus.index, this.points.length - 1))
     const point = this.points[index]
     if(!point) return
@@ -136,10 +147,10 @@ const TrackMap = {
     const colors = chartColors()
     if(!this.focusCasing) {
       this.focusCasing = L.polyline(corridor, {color: colors.focusCasing, weight: 11, opacity: 0.72, lineCap: "round", lineJoin: "round", interactive: false}).addTo(this.map)
-      this.focusLine = L.polyline(corridor, {color: colors.accent, weight: 6, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false}).addTo(this.map)
+      this.focusLine = L.polyline(corridor, {color: focus.heartRate ? colors.heartRate : colors.accent, weight: 6, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false}).addTo(this.map)
     } else {
       this.focusCasing.setLatLngs(corridor).setStyle({color: colors.focusCasing})
-      this.focusLine.setLatLngs(corridor).setStyle({color: colors.accent})
+      this.focusLine.setLatLngs(corridor).setStyle({color: focus.heartRate ? colors.heartRate : colors.accent})
     }
 
     if(!this.cursor) {
@@ -156,6 +167,7 @@ const TrackMap = {
     this.line?.setStyle({opacity: 0.38})
   },
   clearFocus() {
+    this.currentFocus = null
     this.cursor?.remove()
     this.focusCasing?.remove()
     this.focusLine?.remove()
@@ -167,6 +179,7 @@ const TrackMap = {
   updated() { this.mounted() },
   destroyed() {
     window.removeEventListener(profileFocusEvent, this.focusHandler)
+    this.themeObserver?.disconnect()
     this.map?.remove()
   },
 }
@@ -201,6 +214,8 @@ const chartColors = () => ({
   speed: getComputedStyle(document.documentElement).getPropertyValue("--orange").trim(),
   accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
   focusCasing: getComputedStyle(document.documentElement).getPropertyValue("--ink").trim(),
+  heartRate: getComputedStyle(document.documentElement).getPropertyValue("--heart-rate").trim(),
+  surface: getComputedStyle(document.documentElement).getPropertyValue("--surface-strong").trim(),
 })
 
 const nearestProfileIndex = (distances, value) => {
@@ -720,10 +735,11 @@ const CompareChart = {
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+const heartRateHooks = createHeartRateHooks(echarts, chartColors, dispatchProfileFocus)
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, TrackMap, HeatMap, TrackChart, MonthlyChart, SpeedHistoryChart, ProgressVolumeChart, RouteProgressMap, RouteSectorChart, RouteTrendChart, CompareChart, ShareCard},
+  hooks: {...colocatedHooks, ...heartRateHooks, TrackMap, HeatMap, TrackChart, MonthlyChart, SpeedHistoryChart, ProgressVolumeChart, RouteProgressMap, RouteSectorChart, RouteTrendChart, CompareChart, ShareCard},
 })
 
 // Show progress bar on live navigation and form submits

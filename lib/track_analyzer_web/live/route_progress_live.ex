@@ -2,10 +2,15 @@ defmodule TrackAnalyzerWeb.RouteProgressLive do
   use TrackAnalyzerWeb, :live_view
 
   alias TrackAnalyzer.Tracks.RouteProgress
+  alias TrackAnalyzer.Tracks.{HeartRates, HeartRateProgress}
+  import TrackAnalyzerWeb.HeartRateComponents, only: [route_hr: 1]
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    if connected?(socket), do: RouteProgress.subscribe()
+    if connected?(socket) do
+      RouteProgress.subscribe()
+      HeartRates.subscribe()
+    end
 
     {:ok,
      socket
@@ -16,6 +21,8 @@ defmodule TrackAnalyzerWeb.RouteProgressLive do
   @impl true
   def handle_info({:route_progress_rebuilt, _result}, socket),
     do: {:noreply, load_cluster(socket)}
+
+  def handle_info(:heart_rate_updated, socket), do: {:noreply, load_cluster(socket)}
 
   defp load_cluster(socket) do
     cluster = RouteProgress.get_cluster!(socket.assigns.cluster_id)
@@ -46,6 +53,7 @@ defmodule TrackAnalyzerWeb.RouteProgressLive do
     socket
     |> assign(:page_title, cluster.name)
     |> assign(:cluster, cluster)
+    |> assign(:hr_signal, HeartRateProgress.summarize(cluster))
     |> assign(:representative, representative)
     |> assign(:fastest, fastest)
     |> assign(:polyline, if(rendering, do: rendering.encoded_polyline, else: ""))
@@ -127,6 +135,7 @@ defmodule TrackAnalyzerWeb.RouteProgressLive do
             <.icon name="hero-map-pin" class="size-4" /> Representative track
           </.link>
         </header>
+        <.route_hr :if={@hr_signal.recorded_count > 0} signal={@hr_signal} id="route-heart-rate" />
 
         <section id="route-progress-metrics" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <.metric

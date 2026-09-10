@@ -65,6 +65,7 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
           recorded_at: nil,
           hdop: nil,
           recorded_speed_mps: nil,
+          heart_rate_bpm: nil,
           extras: %{}
         }
 
@@ -141,6 +142,20 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
 
   defp capture_value("speed", text, %{current_point: point} = state) when not is_nil(point) do
     %{state | current_point: Map.put(point, :recorded_speed_mps, parse_float(text))}
+  end
+
+  defp capture_value("hr", text, %{current_point: point} = state) when not is_nil(point) do
+    if "extensions" in state.stack do
+      point = %{
+        point
+        | heart_rate_bpm: TrackAnalyzer.Tracks.HeartRate.normalize(text),
+          extras: Map.put(point.extras, "hr", text)
+      }
+
+      %{state | current_point: point}
+    else
+      state
+    end
   end
 
   defp capture_value(local_name, text, %{current_point: point} = state)

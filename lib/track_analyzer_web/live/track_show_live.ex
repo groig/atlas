@@ -3,11 +3,17 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
 
   alias TrackAnalyzer.Tracks
   alias TrackAnalyzer.Tracks.RouteProgress
+  alias TrackAnalyzer.Tracks.HeartRates
+  import TrackAnalyzerWeb.HeartRateComponents
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     track = Tracks.get_track!(id)
-    if connected?(socket), do: Tracks.subscribe(track.id)
+
+    if connected?(socket) do
+      Tracks.subscribe(track.id)
+      HeartRates.subscribe()
+    end
 
     {:ok,
      socket
@@ -15,6 +21,16 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
      |> assign_track(track)
      |> stream(:events, track.events)
      |> stream(:splits, interesting_splits(track.splits))}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    if params["hr_from"] && params["hr_until"] do
+      {:noreply,
+       select_hr(socket, parse_seconds(params["hr_from"]), parse_seconds(params["hr_until"]))}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -28,6 +44,51 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
     end
   end
 
+  def handle_event("hr_range", %{"range" => params}, socket) do
+    from = parse_seconds(params["from"])
+    until = parse_seconds(params["until"])
+    {:noreply, select_hr(socket, from && from * 60, until && until * 60)}
+  end
+
+  def handle_event("hr_select", %{"from" => from, "until" => until}, socket),
+    do: {:noreply, select_hr(socket, parse_seconds(from), parse_seconds(until))}
+
+  def handle_event("hr_clear", _params, socket),
+    do: {:noreply, socket |> assign(:hr_selection, nil) |> push_event("hr:clear", %{})}
+
+  defp select_hr(socket, from, until) do
+    case HeartRates.selection(socket.assigns.track, from, until) do
+      {:ok, selection} ->
+        socket
+        |> assign(:hr_selection, selection)
+        |> assign(
+          :hr_range_form,
+          to_form(%{"from" => Float.round(from / 60, 1), "until" => Float.round(until / 60, 1)},
+            as: :range
+          )
+        )
+        |> push_event("hr:selection", %{from: from, until: until})
+
+      _ ->
+        put_flash(
+          socket,
+          :error,
+          "Choose a start and end within the track, with the end after the start."
+        )
+    end
+  end
+
+  defp parse_seconds(value) when is_number(value), do: value
+
+  defp parse_seconds(value) when is_binary(value) do
+    case Float.parse(value) do
+      {number, ""} -> number
+      _ -> nil
+    end
+  end
+
+  defp parse_seconds(_), do: nil
+
   @impl true
   def handle_info({:track_updated, updated}, socket) do
     track = Tracks.get_track!(updated.id)
@@ -38,6 +99,9 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
      |> stream(:events, track.events, reset: true)
      |> stream(:splits, interesting_splits(track.splits), reset: true)}
   end
+
+  def handle_info(:heart_rate_updated, socket),
+    do: {:noreply, assign_track(socket, Tracks.get_track!(socket.assigns.track.id))}
 
   defp assign_track(socket, track) do
     rendering =
@@ -51,6 +115,14 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
     |> assign(:series_json, json(if(rendering, do: rendering.series, else: %{})))
     |> assign(:route_match, RouteProgress.matched_cluster_for_track(track.id))
     |> assign(:complete?, track.status in ["complete", "insufficient_data"])
+    |> assign(:hr, HeartRates.summary_for(track))
+    |> assign(:hr_selection, nil)
+    |> assign(
+      :hr_range_form,
+      to_form(%{"from" => 0, "until" => Float.round(min(track.elapsed_s || 0, 300) / 60, 1)},
+        as: :range
+      )
+    )
   end
 
   defp interesting_splits(splits) do
@@ -291,7 +363,20 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
           </aside>
         </section>
 
-        <section :if={@rendering} class="topo-card mt-5 rounded-[1.7rem] p-4 sm:p-6">
+        <.track_heart_rate
+          :if={@rendering && (@hr["sample_count"] || 0) > 0}
+          hr={@hr}
+          quality={@track.quality["heart_rate"] || %{}}
+          series={@series_json}
+          origin={@track.started_at}
+          range_form={@hr_range_form}
+          selection={@hr_selection}
+        />
+
+        <section
+          :if={@rendering && (@hr["sample_count"] || 0) == 0}
+          class="topo-card mt-5 rounded-[1.7rem] p-4 sm:p-6"
+        >
           <div>
             <p class="text-xs font-bold uppercase tracking-[0.17em] text-[var(--ink-muted)]">
               Terrain × tempo

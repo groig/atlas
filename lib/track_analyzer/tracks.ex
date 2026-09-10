@@ -183,6 +183,7 @@ defmodule TrackAnalyzer.Tracks do
 
   def persist_analysis(%Track{} = track, result) do
     Repo.transaction(fn ->
+      TrackAnalyzer.Tracks.HeartRates.lock_profile()
       clear_analysis(track.id)
       segment_ids = insert_segments(track.id, result.segments)
       insert_points(track.id, segment_ids, result.points)
@@ -191,7 +192,13 @@ defmodule TrackAnalyzer.Tracks do
       insert_rows(Rendering, track.id, result.renderings)
       insert_rows(RouteCell, track.id, result.cells)
 
-      summary = result.summary
+      hr =
+        TrackAnalyzer.Tracks.HeartRate.with_zones(
+          result.summary.stats["heart_rate"] || %{},
+          TrackAnalyzer.Tracks.HeartRates.profile()
+        )
+
+      summary = put_in(result.summary, [:stats, "heart_rate"], hr)
       status = if summary.point_count < 2, do: "insufficient_data", else: "complete"
 
       attrs = %{
@@ -302,6 +309,7 @@ defmodule TrackAnalyzer.Tracks do
         recorded_at: point.recorded_at,
         hdop: point.hdop,
         recorded_speed_mps: point.recorded_speed_mps,
+        heart_rate_bpm: Map.get(point, :heart_rate_bpm),
         derived_speed_mps: point.derived_speed_mps,
         cumulative_distance_m: point.cumulative_distance_m,
         grade_percent: point.grade_percent,

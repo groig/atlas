@@ -2,6 +2,7 @@ defmodule TrackAnalyzerWeb.CompareLive do
   use TrackAnalyzerWeb, :live_view
 
   alias TrackAnalyzer.Tracks
+  alias TrackAnalyzer.Tracks.HeartRate
 
   @impl true
   def mount(_params, _session, socket) do
@@ -14,6 +15,8 @@ defmodule TrackAnalyzerWeb.CompareLive do
      |> assign(:page_title, "Compare tracks")
      |> assign(:selected_ids, [])
      |> assign(:comparison_json, "[]")
+     |> assign(:hr_comparison_json, "[]")
+     |> assign(:has_hr?, false)
      |> stream(:candidates, candidates)
      |> stream(:selected, [])}
   end
@@ -46,6 +49,24 @@ defmodule TrackAnalyzerWeb.CompareLive do
       socket
       |> assign(:selected_ids, ids)
       |> assign(:comparison_json, json(payload))
+      |> assign(
+        :hr_comparison_json,
+        json(
+          Enum.map(selected, fn track ->
+            hr = track.stats["heart_rate"] || %{}
+
+            %{
+              name: track.name,
+              available: (hr["sample_count"] || 0) > 0,
+              distribution: HeartRate.distribution(hr)
+            }
+          end)
+        )
+      )
+      |> assign(
+        :has_hr?,
+        Enum.any?(selected, &((&1.stats["heart_rate"]["sample_count"] || 0) > 0))
+      )
       |> stream(:selected, selected, reset: true)
 
     {:noreply,
@@ -228,8 +249,55 @@ defmodule TrackAnalyzerWeb.CompareLive do
                   navigate={~p"/tracks/#{track.id}"}
                   class="mt-4 inline-flex items-center gap-1 text-xs font-bold text-[var(--ink-muted)] hover:text-[var(--ink)]"
                 >Open analysis <.icon name="hero-arrow-up-right" class="size-3.5" /></.link>
+                <dl
+                  :if={@has_hr?}
+                  id={"compare-hr-#{track.id}"}
+                  class="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--line)] pt-4"
+                >
+                  <.compare_metric
+                    label="HR average"
+                    value={bpm(track.stats["heart_rate"]["average_bpm"])}
+                  />
+                  <.compare_metric
+                    label="Moving HR"
+                    value={bpm(track.stats["heart_rate"]["moving_average_bpm"])}
+                  />
+                  <.compare_metric
+                    label="HR peak"
+                    value={bpm(track.stats["heart_rate"]["maximum_bpm"])}
+                  />
+                  <.compare_metric
+                    label="HR time coverage"
+                    value={
+                      if((track.stats["heart_rate"]["sample_count"] || 0) > 0,
+                        do: percent(track.stats["heart_rate"]["coverage_percent"]),
+                        else: "Unavailable"
+                      )
+                    }
+                  />
+                </dl>
               </div>
             </div>
+          </div>
+        </section>
+        <section
+          :if={@has_hr?}
+          id="compare-heart-rate"
+          class="topo-card mt-5 rounded-[1.7rem] p-5 sm:p-6"
+        >
+          <h2 class="text-xl font-black">Heart-rate distribution</h2><p class="mt-2 text-xs text-[var(--ink-muted)]">
+            Recorded minutes per 10 BPM band. Different durations and routes affect these totals; missing HR is unavailable, not zero.
+          </p>
+          <div
+            id="compare-hr-chart"
+            phx-hook="HeartRateSummaryChart"
+            phx-update="ignore"
+            data-kind="compare"
+            data-rows={@hr_comparison_json}
+            class="echarts-surface mt-4 h-80"
+            role="img"
+            aria-label="Heart rate distributions for selected tracks"
+          >
           </div>
         </section>
       </section>

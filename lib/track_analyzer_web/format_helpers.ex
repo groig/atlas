@@ -13,6 +13,16 @@ defmodule TrackAnalyzerWeb.FormatHelpers do
   def speed(nil), do: "—"
   def speed(meters_per_second), do: number(meters_per_second * 3.6, 1) <> " km/h"
 
+  def bpm(nil), do: "—"
+  def bpm(value), do: number(value, 0) <> " bpm"
+
+  def elapsed_time(nil), do: "—"
+
+  def elapsed_time(seconds) do
+    total = max(round(seconds), 0)
+    "#{div(total, 60)}:#{String.pad_leading(to_string(rem(total, 60)), 2, "0")}"
+  end
+
   def duration(nil), do: "—"
 
   def duration(seconds) do

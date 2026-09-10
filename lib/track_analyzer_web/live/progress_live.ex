@@ -3,6 +3,7 @@ defmodule TrackAnalyzerWeb.ProgressLive do
 
   alias TrackAnalyzer.Tracks
   alias TrackAnalyzer.Tracks.RouteProgress
+  import TrackAnalyzerWeb.HeartRateComponents, only: [progress_tabs: 1]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -135,6 +136,8 @@ defmodule TrackAnalyzerWeb.ProgressLive do
             </div>
           </div>
         </header>
+
+        <.progress_tabs active="routes" />
 
         <section
           :if={@summary.status.state in [:missing, :stale]}

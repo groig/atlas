@@ -29,6 +29,7 @@
   --accent-ink: #1a2a08;
   --cyan: #27d9c2;
   --orange: #ff7d45;
+  --heart-rate: #c43c69;
   --danger: #dc4f55;
   --shadow: 0 20px 60px rgba(26, 48, 36, 0.09);
 }
@@ -49,6 +50,7 @@
   --accent-ink: #111a05;
   --cyan: #36e3cd;
   --orange: #ff8752;
+  --heart-rate: #fb7fa3;
   --danger: #ff6f76;
   --shadow: 0 22px 70px rgba(0, 0, 0, 0.3);
 }

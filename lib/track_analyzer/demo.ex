@@ -154,7 +154,11 @@ defmodule TrackAnalyzer.Demo do
       path: path,
       distance_m: List.last(points).distance_m,
       elapsed_ms: elapsed_ms,
-      gpx: gpx(name, points)
+      gpx:
+        gpx(
+          name,
+          Enum.map(points, &Map.put(&1, :heart_rate_bpm, synthetic_hr(index, &1.position)))
+        )
     }
   end
 
@@ -229,7 +233,7 @@ defmodule TrackAnalyzer.Demo do
 
     """
     <?xml version="1.0" encoding="UTF-8"?>
-    <gpx version="1.1" creator="Track Atlas synthetic demo" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net">
+    <gpx version="1.1" creator="Track Atlas synthetic demo" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
       <metadata><name>#{name}</name><extensions><osmand:activity>cycling</osmand:activity></extensions></metadata>
       <trk><name>#{name}</name><trkseg>
     #{track_points}
@@ -247,6 +251,28 @@ defmodule TrackAnalyzer.Demo do
     speed =
       if point.speed_mps, do: :erlang.float_to_binary(point.speed_mps, decimals: 2), else: "0"
 
-    "    <trkpt lat=\"#{latitude}\" lon=\"#{longitude}\"><ele>#{elevation}</ele><time>#{DateTime.to_iso8601(point.time)}</time><hdop>#{hdop}</hdop><extensions><osmand:speed>#{speed}</osmand:speed></extensions></trkpt>"
+    hr =
+      if point.heart_rate_bpm,
+        do:
+          "<gpxtpx:TrackPointExtension><gpxtpx:hr>#{point.heart_rate_bpm}</gpxtpx:hr></gpxtpx:TrackPointExtension>",
+        else: ""
+
+    "    <trkpt lat=\"#{latitude}\" lon=\"#{longitude}\"><ele>#{elevation}</ele><time>#{DateTime.to_iso8601(point.time)}</time><hdop>#{hdop}</hdop><extensions><osmand:speed>#{speed}</osmand:speed>#{hr}</extensions></trkpt>"
+  end
+
+  # Entirely invented sensor observations, including occasional missing readings.
+  defp synthetic_hr(index, position) do
+    cond do
+      rem(index, 7) == 0 ->
+        nil
+
+      rem(index, 5) == 0 and position in 90..95 ->
+        nil
+
+      true ->
+        round(
+          112 + 22 * min(position / 45, 1) + 11 * :math.sin(position / 18) + rem(index, 6) * 2
+        )
+    end
   end
 end

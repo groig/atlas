@@ -3,20 +3,26 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
   Deterministic, versioned cycling analysis over normalized GPX observations.
   """
 
-  alias TrackAnalyzer.Tracks.GeoMetrics
+  alias TrackAnalyzer.Tracks.{GeoMetrics, HeartRate}
 
-  @analysis_version 3
+  @analysis_version 4
   @effort_distances [100, 500, 1_000, 5_000, 10_000, 20_000, 40_000]
 
   def analysis_version, do: @analysis_version
 
-  def analyze(parsed) do
+  def analyze(parsed, options \\ []) do
     config = Application.fetch_env!(:track_analyzer, :analysis)
     derived = derive_points(parsed.points, config)
-    points = add_grades(derived.points, config[:grade_window_m])
+    points = derived.points |> add_grades(config[:grade_window_m]) |> HeartRate.prepare()
+    hr = HeartRate.analyze(points, Keyword.get(options, :heart_rate_profile, %{}))
     splits = kilometer_splits(points, derived.cumulative_distance_m) ++ best_efforts(points)
     speed_metrics = speed_metrics(points, splits, config)
     summary = summarize(parsed, points, derived, config, speed_metrics)
+
+    summary =
+      summary
+      |> put_in([:stats, "heart_rate"], hr.summary)
+      |> put_in([:quality, "heart_rate"], hr.quality)
 
     %{
       points: points,
@@ -546,6 +552,10 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
           "elevation_m" => Enum.map(sampled, &round_or_nil(&1.elevation_m, 1)),
           "speed_kmh" => Enum.map(sampled, &round_or_nil(speed_for(&1) * 3.6, 1)),
           "grade_percent" => Enum.map(sampled, &round_or_nil(&1.grade_percent, 1)),
+          "heart_rate_bpm" => Enum.map(sampled, & &1.heart_rate_bpm),
+          "hr_jump" => Enum.map(sampled, & &1.extras["hr_jump"]),
+          "hr_break" => Enum.map(sampled, & &1.extras["hr_break"]),
+          "position" => Enum.map(sampled, & &1.position),
           "time" =>
             Enum.map(sampled, &if(&1.recorded_at, do: DateTime.to_iso8601(&1.recorded_at)))
         }
@@ -667,10 +677,32 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
   defp sample(points, maximum) when length(points) <= maximum, do: points
 
   defp sample(points, maximum) do
-    step = max(ceil(length(points) / maximum), 1)
-    sampled = points |> Enum.take_every(step)
+    count = length(points)
+    step = max(ceil(count / maximum), 1)
+    # A sampled line must not silently interpolate across an omitted HR gap.
+    # Mark each retained endpoint if any intervening observation breaks continuity.
+    {sampled, _} =
+      points
+      |> Enum.with_index()
+      |> Enum.map_reduce({false, false}, fn {point, index}, {gap, jump} ->
+        gap = gap or point.extras["hr_break"] == true
+        jump = jump or point.extras["hr_jump"] == true
+
+        if rem(index, step) == 0 or index == count - 1 do
+          kept = %{
+            point
+            | extras: point.extras |> Map.put("hr_break", gap) |> Map.put("hr_jump", jump)
+          }
+
+          {kept, {false, false}}
+        else
+          {nil, {gap, jump}}
+        end
+      end)
+
+    sampled = Enum.reject(sampled, &is_nil/1)
     last = List.last(points)
-    if List.last(sampled) == last, do: sampled, else: sampled ++ [last]
+    if List.last(sampled).position == last.position, do: sampled, else: sampled ++ [last]
   end
 
   defp average(points, field),

@@ -13,7 +13,7 @@ defmodule TrackAnalyzer.Workers.AnalyzeTrackWorker do
 
   alias TrackAnalyzer.Imports
   alias TrackAnalyzer.Tracks
-  alias TrackAnalyzer.Tracks.{Analyzer, GPX}
+  alias TrackAnalyzer.Tracks.{Analyzer, GPX, HeartRates}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"track_id" => track_id}}) do
@@ -47,7 +47,7 @@ defmodule TrackAnalyzer.Workers.AnalyzeTrackWorker do
              stage: "Finding climbs, stops, efforts, and route patterns",
              progress: 48
            }),
-         result <- Analyzer.analyze(parsed),
+         result <- Analyzer.analyze(parsed, heart_rate_profile: HeartRates.profile()),
          {:ok, track} <-
            Tracks.update_status(track, %{
              status: "indexing",
