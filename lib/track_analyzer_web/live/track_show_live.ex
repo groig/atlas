@@ -5,6 +5,7 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
   alias TrackAnalyzer.Tracks.RouteProgress
   alias TrackAnalyzer.Tracks.HeartRates
   import TrackAnalyzerWeb.HeartRateComponents
+  import TrackAnalyzerWeb.SensorComponents
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -325,6 +326,10 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
               /><.quality_row
                 label="High dilution (HDOP)"
                 value={@track.quality["high_hdop_points"] || 0}
+              /><.quality_row
+                :if={(@track.quality["records_without_position"] || 0) > 0}
+                label="Sensor records without GPS"
+                value={@track.quality["records_without_position"]}
               />
             </div>
             <div class="mt-6 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] p-4">
@@ -391,6 +396,8 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
           >
           </div>
         </section>
+
+        <.track_sensors :if={@rendering && sensors?(@track)} track={@track} series={@series_json} />
 
         <section class="mt-5 grid gap-5 lg:grid-cols-2">
           <div class="topo-card rounded-[1.7rem] p-5 sm:p-6">

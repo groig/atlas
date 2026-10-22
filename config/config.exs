@@ -8,7 +8,9 @@
 import Config
 
 config :mime, :types, %{
-  "application/vnd.osmand.osf" => ["osf"]
+  "application/vnd.osmand.osf" => ["osf"],
+  "application/gpx+xml" => ["gpx"],
+  "application/vnd.ant.fit" => ["fit"]
 }
 
 config :track_analyzer,

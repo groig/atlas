@@ -7,6 +7,7 @@ defmodule TrackAnalyzer.Tracks.Track do
     field :original_path, :string
     field :source_filename, :string
     field :source_folder, :string
+    field :source_format, :string, default: "gpx"
     field :name, :string
     field :creator, :string
     field :activity_type, :string
@@ -58,6 +59,7 @@ defmodule TrackAnalyzer.Tracks.Track do
       :original_path,
       :source_filename,
       :source_folder,
+      :source_format,
       :name,
       :creator,
       :activity_type,
@@ -97,6 +99,7 @@ defmodule TrackAnalyzer.Tracks.Track do
       :status,
       ~w(queued parsing cleaning analyzing indexing complete insufficient_data failed cancelled)
     )
+    |> validate_inclusion(:source_format, ~w(gpx fit))
     |> validate_inclusion(:max_speed_confidence, ~w(high medium low))
     |> validate_number(:progress, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
     |> unique_constraint(:sha256)

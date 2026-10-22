@@ -16,6 +16,13 @@ defmodule TrackAnalyzerWeb.FormatHelpers do
   def bpm(nil), do: "—"
   def bpm(value), do: number(value, 0) <> " bpm"
 
+  def rpm(nil), do: "—"
+  def rpm(value), do: number(value, 0) <> " rpm"
+
+  def percent_change(nil), do: "—"
+  def percent_change(value) when abs(value) < 0.05, do: "0%"
+  def percent_change(value), do: if(value > 0, do: "+", else: "−") <> number(abs(value), 1) <> "%"
+
   def elapsed_time(nil), do: "—"
 
   def elapsed_time(seconds) do

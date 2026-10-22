@@ -84,7 +84,7 @@ defmodule TrackAnalyzerWeb.Layouts do
         navigate={~p"/import"}
         id="mobile-import"
         class="fixed bottom-5 right-5 z-[800] grid size-14 place-items-center rounded-2xl bg-[var(--accent)] text-[var(--accent-ink)] shadow-xl sm:hidden"
-        aria-label="Import OsmAnd export"
+        aria-label="Import rides"
       >
         <.icon name="hero-arrow-up-tray" class="size-6" />
       </.link>

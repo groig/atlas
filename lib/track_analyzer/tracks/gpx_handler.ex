@@ -1,6 +1,8 @@
 defmodule TrackAnalyzer.Tracks.GPXHandler do
   @behaviour Saxy.Handler
 
+  alias TrackAnalyzer.Tracks.Sensors
+
   @max_points 500_000
 
   def initial_state do
@@ -9,6 +11,7 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
       text: "",
       creator: nil,
       name: nil,
+      track_name: nil,
       activity_type: nil,
       track_position: -1,
       segment_position: -1,
@@ -66,6 +69,9 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
           hdop: nil,
           recorded_speed_mps: nil,
           heart_rate_bpm: nil,
+          cadence_rpm: nil,
+          sensor_speed_mps: nil,
+          sensor_distance_m: nil,
           extras: %{}
         }
 
@@ -105,10 +111,18 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
   end
 
   defp capture_value("name", text, state) do
-    if state.name == nil and "metadata" in state.stack and text != "" do
-      %{state | name: text}
-    else
-      state
+    cond do
+      text == "" ->
+        state
+
+      state.name == nil and "metadata" in state.stack ->
+        %{state | name: text}
+
+      state.track_name == nil and match?(["name", "trk" | _], state.stack) ->
+        %{state | track_name: text}
+
+      true ->
+        state
     end
   end
 
@@ -150,6 +164,39 @@ defmodule TrackAnalyzer.Tracks.GPXHandler do
         point
         | heart_rate_bpm: TrackAnalyzer.Tracks.HeartRate.normalize(text),
           extras: Map.put(point.extras, "hr", text)
+      }
+
+      %{state | current_point: point}
+    else
+      state
+    end
+  end
+
+  # Garmin TrackPointExtension uses `cad`; OsmAnd and others use `cadence`.
+  defp capture_value(name, text, %{current_point: point} = state)
+       when name in ~w(cad cadence bike_cadence) and not is_nil(point) and text != "" do
+    if "extensions" in state.stack do
+      point = %{
+        point
+        | cadence_rpm: Sensors.normalize_cadence(text),
+          extras: Map.put(point.extras, name, text)
+      }
+
+      %{state | current_point: point}
+    else
+      state
+    end
+  end
+
+  # Speed from a paired wheel sensor, in m/s. Plain `speed` stays GPS speed.
+  defp capture_value(name, text, %{current_point: point} = state)
+       when name in ~w(speed_sensor bike_speed sensor_speed) and not is_nil(point) and
+              text != "" do
+    if "extensions" in state.stack do
+      point = %{
+        point
+        | sensor_speed_mps: Sensors.normalize_speed(text),
+          extras: Map.put(point.extras, name, text)
       }
 
       %{state | current_point: point}

@@ -72,10 +72,10 @@ defmodule TrackAnalyzerWeb.NavigationTest do
     refute has_element?(view, "#share-recap-dialog")
   end
 
-  test "OSF import exposes a dedicated dropzone", %{conn: conn} do
+  test "import exposes a dedicated dropzone", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/import")
-    assert has_element?(view, "#osf-upload-form")
-    assert has_element?(view, "#osf-dropzone")
+    assert has_element?(view, "#track-upload-form")
+    assert has_element?(view, "#upload-dropzone")
     assert has_element?(view, "#finish-import")
   end
 

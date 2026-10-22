@@ -11,12 +11,12 @@ defmodule TrackAnalyzerWeb.ImportLive do
 
     {:ok,
      socket
-     |> assign(:page_title, "Import OsmAnd exports")
+     |> assign(:page_title, "Import rides")
      |> assign(:batch, nil)
      |> assign(:form, to_form(%{}, as: :import))
      |> stream(:archives, Imports.list_recent_archives(12))
      |> allow_upload(:archives,
-       accept: ~w(.osf),
+       accept: ~w(.osf .gpx .fit),
        max_entries: 25,
        max_file_size: @max_archive_bytes,
        chunk_size: 1024 * 1024,
@@ -56,7 +56,7 @@ defmodule TrackAnalyzerWeb.ImportLive do
   end
 
   def handle_event("finish", _params, %{assigns: %{batch: nil}} = socket) do
-    {:noreply, put_flash(socket, :error, "Choose at least one OsmAnd .osf export first.")}
+    {:noreply, put_flash(socket, :error, "Choose at least one .osf, .gpx or .fit file first.")}
   end
 
   def handle_event("finish", _params, socket) do
@@ -89,10 +89,21 @@ defmodule TrackAnalyzerWeb.ImportLive do
 
   defp ensure_batch(socket), do: {socket.assigns.batch, socket}
 
-  defp upload_error(:too_large), do: "This export exceeds the 5 GB safety limit."
-  defp upload_error(:too_many_files), do: "Upload at most 25 exports in one batch."
-  defp upload_error(:not_accepted), do: "Only OsmAnd .osf exports are accepted."
+  defp upload_error(:too_large), do: "This file exceeds the 5 GB safety limit."
+  defp upload_error(:too_many_files), do: "Upload at most 25 files in one batch."
+
+  defp upload_error(:not_accepted),
+    do: "Only OsmAnd .osf exports, .gpx and .fit files are accepted."
+
   defp upload_error(error), do: inspect(error)
+
+  defp format_icon(name) do
+    case TrackAnalyzer.Imports.SingleFile.format_for(name) do
+      "osf" -> "hero-archive-box"
+      "fit" -> "hero-cpu-chip"
+      _gpx -> "hero-map"
+    end
+  end
 
   defp file_size(bytes) when bytes >= 1024 * 1024 * 1024,
     do: :erlang.float_to_binary(bytes / (1024 * 1024 * 1024), decimals: 1) <> " GB"
@@ -110,11 +121,13 @@ defmodule TrackAnalyzerWeb.ImportLive do
         <header id="import-header" class="grid items-center gap-5 lg:grid-cols-[1fr_auto]">
           <div>
             <h1 class="text-3xl font-black tracking-[-0.045em] sm:text-4xl">
-              Import OsmAnd exports
+              Import rides
             </h1>
             <p class="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">
-              Upload one or more <strong class="text-[var(--ink)]">.osf</strong>
-              files. Tracks are validated, deduplicated, and analyzed in the background.
+              Upload OsmAnd <strong class="text-[var(--ink)]">.osf</strong>
+              exports, single <strong class="text-[var(--ink)]">.gpx</strong>
+              tracks, or <strong class="text-[var(--ink)]">.fit</strong>
+              files from a bike computer or app. Tracks are validated, deduplicated, and analyzed in the background, including cadence, speed sensor and heart-rate data when recorded.
             </p>
           </div>
           <div class="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-xs text-[var(--ink-muted)]">
@@ -122,9 +135,15 @@ defmodule TrackAnalyzerWeb.ImportLive do
           </div>
         </header>
 
-        <.form for={@form} id="osf-upload-form" phx-change="validate" phx-submit="finish" class="mt-6">
+        <.form
+          for={@form}
+          id="track-upload-form"
+          phx-change="validate"
+          phx-submit="finish"
+          class="mt-6"
+        >
           <div
-            id="osf-dropzone"
+            id="upload-dropzone"
             phx-drop-target={@uploads.archives.ref}
             class={[
               "topo-card group relative overflow-hidden rounded-[2rem] border-2 border-dashed p-6 transition duration-300 sm:p-10",
@@ -140,15 +159,15 @@ defmodule TrackAnalyzerWeb.ImportLive do
                   name="hero-folder-arrow-down"
                   class="size-8"
                 /></span>
-                <h2 class="mt-5 text-2xl font-black tracking-[-0.035em]">Drop OsmAnd exports here</h2>
+                <h2 class="mt-5 text-2xl font-black tracking-[-0.035em]">Drop rides here</h2>
                 <p class="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-                  Up to 25 OSF files per batch, 5 GB each. The browser can be closed once each upload reaches 100%.
+                  Up to 25 files per batch: OSF exports, GPX tracks, or FIT activities. The browser can be closed once each upload reaches 100%.
                 </p>
                 <label
                   for={@uploads.archives.ref}
                   class="mt-5 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-2 text-sm font-bold text-[var(--canvas)] shadow-sm transition hover:-translate-y-0.5"
                 >
-                  <.icon name="hero-plus" class="size-4" /> Choose .osf files
+                  <.icon name="hero-plus" class="size-4" /> Choose files
                 </label>
                 <.live_file_input upload={@uploads.archives} class="sr-only" />
               </div>
@@ -160,7 +179,7 @@ defmodule TrackAnalyzerWeb.ImportLive do
                   class="rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)]/70 p-5"
                 >
                   <div class="grid grid-cols-3 gap-3 text-center">
-                    <.process_step number="01" label="Validate OSF" />
+                    <.process_step number="01" label="Validate file" />
                     <.process_step number="02" label="Extract + dedupe" />
                     <.process_step number="03" label="Analyze in parallel" />
                   </div>
@@ -172,7 +191,7 @@ defmodule TrackAnalyzerWeb.ImportLive do
                 >
                   <div class="flex items-start gap-3">
                     <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-[color-mix(in_srgb,var(--accent)_30%,transparent)]"><.icon
-                      name="hero-archive-box"
+                      name={format_icon(entry.client_name)}
                       class="size-5"
                     /></span>
                     <div class="min-w-0 flex-1">
@@ -215,7 +234,7 @@ defmodule TrackAnalyzerWeb.ImportLive do
 
           <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
             <p class="text-xs text-[var(--ink-muted)]">
-              <.icon name="hero-information-circle" class="mr-1 inline size-4" />OSF is a ZIP container; loose GPX uploads are intentionally rejected.
+              <.icon name="hero-information-circle" class="mr-1 inline size-4" />The same ride uploaded twice, in any batch, is stored once.
             </p>
             <.button id="finish-import" type="submit" variant="primary" disabled={@batch == nil}>
               Continue in background <.icon name="hero-arrow-right" class="size-4" />
@@ -228,7 +247,7 @@ defmodule TrackAnalyzerWeb.ImportLive do
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.17em] text-[var(--ink-muted)]">
                 Live processing dock
-              </p><h2 class="mt-1 text-2xl font-black tracking-[-0.035em]">Recent exports</h2>
+              </p><h2 class="mt-1 text-2xl font-black tracking-[-0.035em]">Recent uploads</h2>
             </div><.link
               navigate={~p"/tracks"}
               class="text-sm font-bold text-[var(--ink-muted)] hover:text-[var(--ink)]"
@@ -239,7 +258,7 @@ defmodule TrackAnalyzerWeb.ImportLive do
               id="import-archives-empty"
               class="hidden only:block rounded-2xl border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--ink-muted)]"
             >
-              Uploaded exports will remain visible here.
+              Uploaded files will remain visible here.
             </div>
             <article
               :for={{id, archive} <- @streams.archives}
@@ -247,10 +266,16 @@ defmodule TrackAnalyzerWeb.ImportLive do
               class="topo-card rounded-2xl p-5"
             >
               <div class="flex items-start justify-between gap-4">
-                <div class="min-w-0">
-                  <p class="truncate font-black">{archive.original_filename}</p><p class="mt-1 text-xs text-[var(--ink-muted)]">
-                    {archive.stage}
-                  </p>
+                <div class="flex min-w-0 items-start gap-3">
+                  <span
+                    id={"#{id}-format"}
+                    class="mt-0.5 shrink-0 rounded-md border border-[var(--line)] px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-[var(--ink-muted)]"
+                  >{archive.format}</span>
+                  <div class="min-w-0">
+                    <p class="truncate font-black">{archive.original_filename}</p><p class="mt-1 text-xs text-[var(--ink-muted)]">
+                      {archive.stage}
+                    </p>
+                  </div>
                 </div><span class={[
                   "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ring-1",
                   status_classes(archive.status)

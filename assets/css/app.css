@@ -30,6 +30,8 @@
   --cyan: #27d9c2;
   --orange: #ff7d45;
   --heart-rate: #c43c69;
+  --cadence: #6a4fe0;
+  --device-speed: #2378c9;
   --danger: #dc4f55;
   --shadow: 0 20px 60px rgba(26, 48, 36, 0.09);
 }
@@ -51,6 +53,8 @@
   --cyan: #36e3cd;
   --orange: #ff8752;
   --heart-rate: #fb7fa3;
+  --cadence: #ad9cff;
+  --device-speed: #6cb4ff;
   --danger: #ff6f76;
   --shadow: 0 22px 70px rgba(0, 0, 0, 0.3);
 }

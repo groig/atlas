@@ -9,20 +9,21 @@ defmodule TrackAnalyzerWeb.HeartRateComponents do
     <nav
       id="progress-tabs"
       aria-label="Progress views"
-      class="flex w-fit gap-1 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-1"
+      class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-1"
     >
       <.link
         :for={
           {label, href, key, icon} <- [
             {"Routes & speed", ~p"/progress", "routes", "hero-arrow-trending-up"},
-            {"Heart rate", ~p"/progress/heart-rate", "heart", "hero-heart"}
+            {"Heart rate", ~p"/progress/heart-rate", "heart", "hero-heart"},
+            {"Pedaling", ~p"/progress/pedaling", "pedaling", "hero-arrow-path"}
           ]
         }
         id={"progress-tab-#{key}"}
         navigate={href}
         aria-current={if(@active == key, do: "page")}
         class={[
-          "inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold transition",
+          "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-bold transition",
           if(@active == key,
             do: "bg-[var(--ink)] text-[var(--canvas)]",
             else: "text-[var(--ink-muted)] hover:bg-[var(--surface-strong)]"

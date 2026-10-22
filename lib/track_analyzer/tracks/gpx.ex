@@ -1,6 +1,6 @@
 defmodule TrackAnalyzer.Tracks.GPX do
   @moduledoc """
-  Streaming GPX reader for OsmAnd-recorded tracks.
+  Streaming GPX reader for OsmAnd and other GPX 1.1 recorders.
   """
 
   alias TrackAnalyzer.Tracks.GPXHandler
@@ -20,7 +20,9 @@ defmodule TrackAnalyzer.Tracks.GPX do
     error in File.Error -> {:error, {:file_error, error.reason}}
   end
 
-  defp normalize_result({:ok, state}, path) do
+  # Stored files are named by content hash, so the upload filename (kept on the
+  # track) is the fallback name rather than the path here.
+  defp normalize_result({:ok, state}, _path) do
     points =
       state.points
       |> Enum.reverse()
@@ -36,11 +38,9 @@ defmodule TrackAnalyzer.Tracks.GPX do
       end)
       |> Enum.reverse()
 
-    default_name = path |> Path.basename(".gpx") |> String.replace("_", " ")
-
     {:ok,
      %{
-       name: state.name || default_name,
+       name: state.name || state.track_name,
        creator: state.creator,
        activity_type: state.activity_type,
        segments: Enum.reverse(state.segments),

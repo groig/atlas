@@ -7,7 +7,7 @@ defmodule TrackAnalyzer.Workers.ArchiveWorker do
     unique: [period: :infinity, fields: [:worker, :args], keys: [:archive_id]]
 
   alias TrackAnalyzer.Imports
-  alias TrackAnalyzer.Imports.OSF
+  alias TrackAnalyzer.Imports.{OSF, SingleFile}
   alias TrackAnalyzer.Repo
   alias TrackAnalyzer.Storage.Local
   alias TrackAnalyzer.Tracks.Track
@@ -20,15 +20,15 @@ defmodule TrackAnalyzer.Workers.ArchiveWorker do
     with {:ok, archive} <-
            Imports.update_archive(archive, %{
              status: "inspecting",
-             stage: "Validating OsmAnd export",
+             stage: validating_stage(archive.format),
              progress: 5,
              error: nil
            }),
-         {:ok, inspection} <- OSF.inspect(archive.storage_path),
+         {:ok, inspection} <- inspect_source(archive),
          {:ok, archive} <-
            Imports.update_archive(archive, %{
              status: "processing",
-             stage: "Extracting #{length(inspection.items)} tracks",
+             stage: extracting_stage(archive.format, length(inspection.items)),
              progress: 12,
              manifest_version: inspection.version,
              manifest: inspection.manifest,
@@ -56,6 +56,26 @@ defmodule TrackAnalyzer.Workers.ArchiveWorker do
     error -> fail_archive(Imports.get_archive!(archive_id), error)
   end
 
+  defp inspect_source(%{format: format} = archive) when format in ~w(gpx fit),
+    do: SingleFile.inspect(archive.storage_path, format, archive.original_filename)
+
+  defp inspect_source(archive), do: OSF.inspect(archive.storage_path)
+
+  defp read_item(%{format: format} = archive, _path) when format in ~w(gpx fit),
+    do: SingleFile.read(archive.storage_path)
+
+  defp read_item(archive, path), do: OSF.read_gpx(archive.storage_path, path)
+
+  defp validating_stage("fit"), do: "Validating FIT file"
+  defp validating_stage("gpx"), do: "Validating GPX file"
+  defp validating_stage(_osf), do: "Validating OsmAnd export"
+
+  defp extracting_stage(format, _count) when format in ~w(gpx fit), do: "Storing track"
+  defp extracting_stage(_osf, count), do: "Extracting #{count} tracks"
+
+  defp track_format(%{"type" => "FIT"}), do: "fit"
+  defp track_format(_manifest), do: "gpx"
+
   defp process_items(archive, items) do
     Enum.reduce(items, %{new: 0, duplicate: 0, failed: 0}, fn item, counts ->
       case process_item(archive, item) do
@@ -73,10 +93,10 @@ defmodule TrackAnalyzer.Workers.ArchiveWorker do
       Imports.get_item_by(archive.id, path) ||
         create_item!(archive, manifest)
 
-    with {:ok, binary} <- OSF.read_gpx(archive.storage_path, path),
-         {:ok, stored} <- Local.store_track(binary) do
+    with {:ok, binary} <- read_item(archive, path),
+         {:ok, stored} <- Local.store_track(binary, track_format(manifest)) do
       case Repo.get_by(Track, sha256: stored.sha256) do
-        nil -> create_track(item, manifest, stored)
+        nil -> create_track(archive, item, manifest, stored)
         track -> link_duplicate(item, track, stored.sha256)
       end
     else
@@ -102,7 +122,7 @@ defmodule TrackAnalyzer.Workers.ArchiveWorker do
     end
   end
 
-  defp create_track(item, manifest, stored) do
+  defp create_track(archive, item, manifest, stored) do
     logical_path = manifest["archive_path"]
     filename = Path.basename(logical_path)
 
@@ -110,7 +130,8 @@ defmodule TrackAnalyzer.Workers.ArchiveWorker do
       sha256: stored.sha256,
       original_path: stored.storage_path,
       source_filename: filename,
-      source_folder: Path.dirname(logical_path),
+      source_format: track_format(manifest),
+      source_folder: if(archive.format == "osf", do: Path.dirname(logical_path)),
       name: filename |> Path.rootname() |> String.replace("_", " "),
       status: "queued",
       stage: "Waiting for analyzer",
@@ -161,7 +182,7 @@ defmodule TrackAnalyzer.Workers.ArchiveWorker do
     {:ok, _archive} =
       Imports.update_archive(archive, %{
         status: "failed",
-        stage: "Could not read export",
+        stage: "Could not read upload",
         progress: 100,
         error: error_text(reason)
       })

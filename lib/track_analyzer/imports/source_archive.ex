@@ -5,6 +5,7 @@ defmodule TrackAnalyzer.Imports.SourceArchive do
   schema "source_archives" do
     field :sha256, :string
     field :original_filename, :string
+    field :format, :string, default: "osf"
     field :storage_path, :string
     field :byte_size, :integer
     field :manifest_version, :integer
@@ -31,6 +32,7 @@ defmodule TrackAnalyzer.Imports.SourceArchive do
       :import_batch_id,
       :sha256,
       :original_filename,
+      :format,
       :storage_path,
       :byte_size,
       :manifest_version,
@@ -51,6 +53,7 @@ defmodule TrackAnalyzer.Imports.SourceArchive do
       :status,
       ~w(queued inspecting processing complete partial duplicate failed)
     )
+    |> validate_inclusion(:format, ~w(osf gpx fit))
     |> validate_number(:progress, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
   end
 end

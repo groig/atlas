@@ -1,11 +1,12 @@
 defmodule TrackAnalyzer.Imports do
   @moduledoc """
-  Owns OSF upload batches and their live, persisted processing state.
+  Owns upload batches (OsmAnd OSF exports, standalone GPX and FIT files) and
+  their live, persisted processing state.
   """
 
   import Ecto.Query
 
-  alias TrackAnalyzer.Imports.{ArchiveItem, ImportBatch, SourceArchive}
+  alias TrackAnalyzer.Imports.{ArchiveItem, ImportBatch, SingleFile, SourceArchive}
   alias TrackAnalyzer.Repo
   alias TrackAnalyzer.Storage.Local
 
@@ -30,10 +31,13 @@ defmodule TrackAnalyzer.Imports do
   end
 
   def accept_archive(%ImportBatch{} = batch, uploaded_path, client_name) do
-    with {:ok, stored} <- Local.store_archive(uploaded_path, client_name),
+    with {:ok, format} <- upload_format(client_name),
+         {:ok, stored} <- Local.store_archive(uploaded_path, client_name, format),
          {:ok, archive} <-
            %SourceArchive{}
-           |> SourceArchive.changeset(Map.put(stored, :import_batch_id, batch.id))
+           |> SourceArchive.changeset(
+             Map.merge(stored, %{import_batch_id: batch.id, format: format})
+           )
            |> Repo.insert(),
          {:ok, _job} <-
            %{archive_id: archive.id}
@@ -42,6 +46,13 @@ defmodule TrackAnalyzer.Imports do
       recalculate_batch(batch.id)
       broadcast(:archive_updated, archive)
       {:ok, archive}
+    end
+  end
+
+  defp upload_format(client_name) do
+    case SingleFile.format_for(client_name) do
+      nil -> {:error, :unsupported_file_type}
+      format -> {:ok, format}
     end
   end
 
@@ -140,7 +151,7 @@ defmodule TrackAnalyzer.Imports do
           {archive.status, archive.stage}
 
         item_count == 0 ->
-          {"processing", "Reading archive"}
+          {"processing", "Reading upload"}
 
         done_count < item_count ->
           {"processing", "Analyzing tracks"}

@@ -1,11 +1,11 @@
 defmodule TrackAnalyzer.Tracks.Analyzer do
   @moduledoc """
-  Deterministic, versioned cycling analysis over normalized GPX observations.
+  Deterministic, versioned cycling analysis over normalized GPX/FIT observations.
   """
 
-  alias TrackAnalyzer.Tracks.{GeoMetrics, HeartRate}
+  alias TrackAnalyzer.Tracks.{GeoMetrics, HeartRate, Sensors}
 
-  @analysis_version 4
+  @analysis_version 5
   @effort_distances [100, 500, 1_000, 5_000, 10_000, 20_000, 40_000]
 
   def analysis_version, do: @analysis_version
@@ -13,8 +13,15 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
   def analyze(parsed, options \\ []) do
     config = Application.fetch_env!(:track_analyzer, :analysis)
     derived = derive_points(parsed.points, config)
-    points = derived.points |> add_grades(config[:grade_window_m]) |> HeartRate.prepare()
+
+    points =
+      derived.points
+      |> add_grades(config[:grade_window_m])
+      |> HeartRate.prepare()
+      |> Sensors.prepare()
+
     hr = HeartRate.analyze(points, Keyword.get(options, :heart_rate_profile, %{}))
+    sensors = Sensors.analyze(points)
     splits = kilometer_splits(points, derived.cumulative_distance_m) ++ best_efforts(points)
     speed_metrics = speed_metrics(points, splits, config)
     summary = summarize(parsed, points, derived, config, speed_metrics)
@@ -23,6 +30,9 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
       summary
       |> put_in([:stats, "heart_rate"], hr.summary)
       |> put_in([:quality, "heart_rate"], hr.quality)
+      |> put_in([:stats, "cadence"], sensors.cadence)
+      |> put_in([:stats, "speed_sensor"], sensors.speed_sensor)
+      |> put_in([:quality, "sensors"], sensors.quality)
 
     %{
       points: points,
@@ -204,6 +214,7 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
       quality: %{
         "invalid_spike_points" => derived.invalid_count,
         "invalid_coordinate_points" => parsed.invalid_point_count,
+        "records_without_position" => Map.get(parsed, :records_without_position, 0),
         "missing_time_points" => missing_time,
         "missing_elevation_points" => missing_elevation,
         "high_hdop_points" => high_hdop
@@ -246,10 +257,12 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
     interval = Map.get(peak.extras, "delta_seconds")
     timing_ok? = is_number(interval) and interval >= 1 and interval <= 15
     hdop_ok? = is_nil(peak.hdop) or peak.hdop <= 10
-    corroborated? = corroborated_peak?(points, peak)
+    device = device_check(peak)
+    corroborated? = device == :agrees or corroborated_peak?(points, peak)
 
     confidence =
       cond do
+        device == :disagrees -> "low"
         timing_ok? and hdop_ok? and corroborated? -> "high"
         timing_ok? and hdop_ok? -> "medium"
         true -> "low"
@@ -260,8 +273,31 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
       |> maybe_reason(timing_ok?, "sample interval outside 1–15 seconds")
       |> maybe_reason(hdop_ok?, "HDOP above 10")
       |> maybe_reason(corroborated?, "no adjacent sample within 80% of the peak")
+      |> maybe_reason(
+        device != :disagrees,
+        "device speed was #{device_speed_kmh(peak)} km/h at this point"
+      )
 
     {confidence, reasons}
+  end
+
+  # A recorder's own speed (often a wheel sensor) is an independent check on a
+  # GPS-derived peak, which a single misplaced fix can inflate.
+  defp device_check(peak) do
+    case Map.get(peak, :sensor_speed_mps) do
+      device when is_number(device) ->
+        if device >= speed_for(peak) * 0.8, do: :agrees, else: :disagrees
+
+      _missing ->
+        :unavailable
+    end
+  end
+
+  defp device_speed_kmh(peak) do
+    case Map.get(peak, :sensor_speed_mps) do
+      device when is_number(device) -> :erlang.float_to_binary(device * 3.6, decimals: 1)
+      _missing -> "—"
+    end
   end
 
   defp corroborated_peak?(points, peak) do
@@ -555,6 +591,12 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
           "heart_rate_bpm" => Enum.map(sampled, & &1.heart_rate_bpm),
           "hr_jump" => Enum.map(sampled, & &1.extras["hr_jump"]),
           "hr_break" => Enum.map(sampled, & &1.extras["hr_break"]),
+          "cadence_rpm" => Enum.map(sampled, &round_or_nil(&1.cadence_rpm, 0)),
+          "sensor_speed_kmh" =>
+            Enum.map(
+              sampled,
+              &if(&1.sensor_speed_mps, do: round_to(&1.sensor_speed_mps * 3.6, 1))
+            ),
           "position" => Enum.map(sampled, & &1.position),
           "time" =>
             Enum.map(sampled, &if(&1.recorded_at, do: DateTime.to_iso8601(&1.recorded_at)))

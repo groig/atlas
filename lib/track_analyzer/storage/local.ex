@@ -1,6 +1,6 @@
 defmodule TrackAnalyzer.Storage.Local do
   @moduledoc """
-  Durable content-addressed storage for private OsmAnd archives and extracted GPX files.
+  Durable content-addressed storage for uploaded sources (OSF, GPX, FIT) and extracted tracks.
   """
 
   @buffer_size 128 * 1024
@@ -21,11 +21,12 @@ defmodule TrackAnalyzer.Storage.Local do
     :ok
   end
 
-  def store_archive(source_path, original_filename) do
+  def store_archive(source_path, original_filename, format \\ "osf")
+      when format in ~w(osf gpx fit) do
     ensure_directories()
 
     with {:ok, sha256, byte_size} <- digest_file(source_path),
-         target <- content_path("archives", sha256, ".osf"),
+         target <- content_path("archives", sha256, "." <> format),
          :ok <- copy_once(source_path, target) do
       {:ok,
        %{
@@ -37,10 +38,10 @@ defmodule TrackAnalyzer.Storage.Local do
     end
   end
 
-  def store_track(binary) when is_binary(binary) do
+  def store_track(binary, format \\ "gpx") when is_binary(binary) and format in ~w(gpx fit) do
     ensure_directories()
     sha256 = Base.encode16(:crypto.hash(:sha256, binary), case: :lower)
-    target = content_path("tracks", sha256, ".gpx")
+    target = content_path("tracks", sha256, "." <> format)
 
     case File.open(target, [:write, :exclusive, :binary]) do
       {:ok, file} ->

@@ -11,6 +11,9 @@ defmodule TrackAnalyzer.Tracks.Point do
     field :hdop, :float
     field :recorded_speed_mps, :float
     field :heart_rate_bpm, :float
+    field :cadence_rpm, :float
+    field :sensor_speed_mps, :float
+    field :sensor_distance_m, :float
     field :derived_speed_mps, :float
     field :cumulative_distance_m, :float, default: 0.0
     field :grade_percent, :float
@@ -35,6 +38,9 @@ defmodule TrackAnalyzer.Tracks.Point do
       :hdop,
       :recorded_speed_mps,
       :heart_rate_bpm,
+      :cadence_rpm,
+      :sensor_speed_mps,
+      :sensor_distance_m,
       :derived_speed_mps,
       :cumulative_distance_m,
       :grade_percent,

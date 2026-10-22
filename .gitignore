@@ -43,6 +43,8 @@ npm-debug.log
 
 # Private OsmAnd exports contain precise location history.
 /priv/*.osf
+/priv/*.fit
+/priv/*.gpx
 
 # Durable local application data must never be committed.
 /var/

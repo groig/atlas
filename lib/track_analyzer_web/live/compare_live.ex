@@ -17,6 +17,7 @@ defmodule TrackAnalyzerWeb.CompareLive do
      |> assign(:comparison_json, "[]")
      |> assign(:hr_comparison_json, "[]")
      |> assign(:has_hr?, false)
+     |> assign(:has_cadence?, false)
      |> stream(:candidates, candidates)
      |> stream(:selected, [])}
   end
@@ -66,6 +67,10 @@ defmodule TrackAnalyzerWeb.CompareLive do
       |> assign(
         :has_hr?,
         Enum.any?(selected, &((&1.stats["heart_rate"]["sample_count"] || 0) > 0))
+      )
+      |> assign(
+        :has_cadence?,
+        Enum.any?(selected, &((get_in(&1.stats, ["cadence", "sample_count"]) || 0) > 0))
       )
       |> stream(:selected, selected, reset: true)
 
@@ -274,6 +279,25 @@ defmodule TrackAnalyzerWeb.CompareLive do
                         else: "Unavailable"
                       )
                     }
+                  />
+                </dl>
+                <dl
+                  :if={@has_cadence?}
+                  id={"compare-cadence-#{track.id}"}
+                  class="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--line)] pt-4"
+                >
+                  <.compare_metric
+                    label="Avg cadence"
+                    value={
+                      if((get_in(track.stats, ["cadence", "sample_count"]) || 0) > 0,
+                        do: rpm(track.stats["cadence"]["average_rpm"]),
+                        else: "Unavailable"
+                      )
+                    }
+                  />
+                  <.compare_metric
+                    label="Coasting"
+                    value={percent(get_in(track.stats, ["cadence", "coasting_percent"]))}
                   />
                 </dl>
               </div>

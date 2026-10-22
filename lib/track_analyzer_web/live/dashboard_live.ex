@@ -88,6 +88,7 @@ defmodule TrackAnalyzerWeb.DashboardLive do
     |> assign(:speed_summary, speed_summary)
     |> assign(:progress_summary, progress_summary)
     |> assign(:hr_count, TrackAnalyzer.Tracks.HeartRates.count())
+    |> assign(:sensor_count, TrackAnalyzer.Tracks.Pedaling.count())
     |> assign(:monthly_json, json(summary.monthly))
     |> assign(:cells_json, json(cells))
     |> assign(:has_map?, cells != [])
@@ -205,6 +206,20 @@ defmodule TrackAnalyzerWeb.DashboardLive do
           class="size-5 text-[var(--heart-rate)]"
         /><span class="text-sm font-bold">Heart rate
         <span class="ml-2 font-normal text-[var(--ink-muted)]">{@hr_count} recorded tracks · effort & route comparisons</span></span></span>
+        <.icon name="hero-arrow-right" class="size-4 shrink-0 transition group-hover:translate-x-1" />
+      </.link>
+
+      <.link
+        :if={@sensor_count > 0}
+        id="dashboard-pedaling"
+        navigate={~p"/progress/pedaling"}
+        class="group mt-3 flex items-center justify-between gap-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-5 py-4 transition hover:border-[var(--cadence)]"
+      >
+        <span class="flex items-center gap-3"><.icon
+          name="hero-arrow-path"
+          class="size-5 text-[var(--cadence)]"
+        /><span class="text-sm font-bold">Pedaling & sensors
+        <span class="ml-2 font-normal text-[var(--ink-muted)]">{@sensor_count} rides with cadence or speed sensors · gearing & calibration</span></span></span>
         <.icon name="hero-arrow-right" class="size-4 shrink-0 transition group-hover:translate-x-1" />
       </.link>
 

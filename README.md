@@ -1,6 +1,6 @@
 # Track / Atlas
 
-Track / Atlas is a self-hosted application for turning an OsmAnd track library into useful maps, trends, records, and activity summaries. Upload an OsmAnd `.osf` export and let the app validate, deduplicate, and analyze its tracks in the background.
+Track / Atlas is a self-hosted application for turning an OsmAnd track library into useful maps, trends, records, and activity summaries. Upload an OsmAnd `.osf` export, single `.gpx` tracks, or `.fit` activities from a bike computer or app, and let the app validate, deduplicate, and analyze them in the background.
 
 ![Track / Atlas overview with portfolio metrics, speed records, and a route heatmap](docs/screenshots/overview.png)
 
@@ -33,6 +33,7 @@ Track / Atlas is a self-hosted application for turning an OsmAnd track library i
 - Automatic matching of repeated routes, with faster/slower/steady signals that account for normal variation
 - Route-specific speed history, latest-versus-prior comparisons, and synchronized 10-sector map analysis
 - Twelve-week training volume, weekly streaks, and recent 100 m and 500 m effort trends
+- Cadence and speed-sensor analysis: pedaling vs coasting, cadence by terrain, a gearing fingerprint, and device-vs-GPS distance with a wheel-calibration hint
 - Heart-rate timelines synchronized with the route map, interval selection, time distributions, and sustained 1/5/10/20-minute averages
 - Same-route speed-versus-HR comparisons, cautious longer-term effort signals, and optional intensity bands with recorded-load history
 - Elevation gain/loss, elevation range, sustained climbs, stopped periods, and kilometer splits
@@ -46,9 +47,15 @@ Maps and charts use compact precomputed renderings, so the interface stays respo
 
 Progress signals are deliberately factual rather than diagnostic. They describe changes in recorded performance on similar routes; traffic, stops, weather, equipment, and GPS quality can still affect the result.
 
-## Getting tracks out of OsmAnd
+## What you can upload
 
-Track / Atlas accepts original OsmAnd `.osf` exports. Loose GPX files are intentionally rejected because the OSF manifest preserves folder structure and makes large imports safer to validate and deduplicate.
+- **OsmAnd `.osf` exports**, which keep folder structure and are the best way to move a whole library.
+- **Single `.gpx` tracks** from OsmAnd or any GPX 1.1 recorder. Garmin `TrackPointExtension` heart rate and cadence are read.
+- **`.fit` activities** from bike computers, watches and phone apps, including cadence, device speed and distance, and heart rate.
+
+The same file is stored once, however many times or batches it is uploaded in. A GPX and a FIT recording of the same ride are different files, so both are kept; they show up as two attempts of the same route.
+
+## Getting tracks out of OsmAnd
 
 On Android:
 
@@ -75,7 +82,7 @@ mix setup
 mix phx.server
 ```
 
-Open [http://localhost:4000](http://localhost:4000), choose **Upload**, and select one or more `.osf` files. A batch can contain up to 25 exports, each as large as 5 GB.
+Open [http://localhost:4000](http://localhost:4000), choose **Upload**, and select one or more `.osf`, `.gpx` or `.fit` files. A batch can contain up to 25 files, each as large as 5 GB.
 
 Uploads and analysis continue in the background. You can leave the import screen after each browser upload reaches 100%; progress remains visible on Overview and Import.
 
@@ -106,6 +113,22 @@ HR stays local and is not included in social recaps. See [how HR analysis works]
 
 ![Heart-rate and speed profiles with a selected interval and its effort summary](docs/screenshots/heart-rate.png)
 
+## Cadence and speed sensors
+
+Rides recorded with a cadence or speed sensor gain a **Pedaling & sensors** section on the track page:
+
+- Cadence over time beside GPS and device speed, synchronized with the map like the HR chart.
+- Average cadence (pedaling time only, and including coasting), coasting share, peak cadence and total pedal strokes.
+- Time in 10 rpm bands, and cadence and coasting on descents, flat ground and climbs.
+- A **gearing fingerprint**: metres travelled per pedal stroke. Each gear combination gives its own value, so the peaks show the gears you actually ride.
+- **Device speed vs GPS**: distance difference, typical speed gap, and how much moving time the device covered while GPS was rejected. A steady offset suggests the wheel circumference on the device is wrong, and the page says by how much.
+
+Device speed is whatever the recorder wrote: a wheel sensor when one is paired, otherwise its own GPS. FIT files do not reliably say which, so the app does not guess. Distances, speeds, splits and records everywhere else still use GPS positions. Device speed is used as a cross-check on GPS speed peaks: a peak the device did not see is rated low confidence.
+
+**Progress → Pedaling** shows cadence and coasting over time, combined cadence bands and gearing across rides, terrain effects, and the device-vs-GPS distance trend.
+
+FIT records without a GPS position (for example indoor rides) are skipped, because every view in the app is built on the route.
+
 ## Privacy and storage
 
 Track analysis is local to this application. Source archives and extracted tracks live under `TRACK_STORAGE_PATH` (or `var/track_analyzer` in development) and are never served from `priv/static`.
@@ -122,7 +145,7 @@ The production runtime requires:
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection URL |
 | `SECRET_KEY_BASE` | Phoenix signing/encryption secret; generate it with `mix phx.gen.secret` |
-| `TRACK_STORAGE_PATH` | Durable writable storage for private OSF and extracted GPX files |
+| `TRACK_STORAGE_PATH` | Durable writable storage for uploaded OSF, GPX and FIT files and extracted tracks |
 | `PHX_HOST` | Public hostname; defaults to `example.com` |
 | `PORT` | HTTP port; defaults to `4000` |
 

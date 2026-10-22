@@ -30,6 +30,7 @@ import polyline from "@mapbox/polyline"
 import * as echarts from "echarts"
 import {ShareCard} from "./share_card"
 import {createHeartRateHooks} from "./heart_rate"
+import {createSensorHooks} from "./sensors"
 
 const systemTheme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
 const setTheme = theme => {
@@ -76,6 +77,7 @@ const profileFocusTooltip = (focus, pinned) => {
     profileMetric(focus.elevationM, "m"),
     profileMetric(focus.speedKmh, "km/h"),
     profileMetric(focus.heartRateBpm, "bpm", 0),
+    profileMetric(focus.cadenceRpm, "rpm", 0),
   ].filter(Boolean)
   const state = pinned ? `<span class="track-focus-state">Pinned</span>` : ""
   return `${state}<strong>${values.shift() || "Track position"}</strong>${values.length > 0 ? `<span>${values.join(" · ")}</span>` : ""}`
@@ -145,12 +147,13 @@ const TrackMap = {
     if(corridor.length < 2) corridor = this.points.slice(Math.max(index - 1, 0), Math.min(index + 2, this.points.length))
 
     const colors = chartColors()
+    const focusColor = focus.cadence ? colors.cadence : focus.heartRate ? colors.heartRate : colors.accent
     if(!this.focusCasing) {
       this.focusCasing = L.polyline(corridor, {color: colors.focusCasing, weight: 11, opacity: 0.72, lineCap: "round", lineJoin: "round", interactive: false}).addTo(this.map)
-      this.focusLine = L.polyline(corridor, {color: focus.heartRate ? colors.heartRate : colors.accent, weight: 6, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false}).addTo(this.map)
+      this.focusLine = L.polyline(corridor, {color: focusColor, weight: 6, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false}).addTo(this.map)
     } else {
       this.focusCasing.setLatLngs(corridor).setStyle({color: colors.focusCasing})
-      this.focusLine.setLatLngs(corridor).setStyle({color: focus.heartRate ? colors.heartRate : colors.accent})
+      this.focusLine.setLatLngs(corridor).setStyle({color: focusColor})
     }
 
     if(!this.cursor) {
@@ -215,6 +218,8 @@ const chartColors = () => ({
   accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
   focusCasing: getComputedStyle(document.documentElement).getPropertyValue("--ink").trim(),
   heartRate: getComputedStyle(document.documentElement).getPropertyValue("--heart-rate").trim(),
+  cadence: getComputedStyle(document.documentElement).getPropertyValue("--cadence").trim(),
+  deviceSpeed: getComputedStyle(document.documentElement).getPropertyValue("--device-speed").trim(),
   surface: getComputedStyle(document.documentElement).getPropertyValue("--surface-strong").trim(),
 })
 
@@ -736,10 +741,11 @@ const CompareChart = {
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const heartRateHooks = createHeartRateHooks(echarts, chartColors, dispatchProfileFocus)
+const sensorHooks = createSensorHooks(echarts, chartColors, dispatchProfileFocus)
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ...heartRateHooks, TrackMap, HeatMap, TrackChart, MonthlyChart, SpeedHistoryChart, ProgressVolumeChart, RouteProgressMap, RouteSectorChart, RouteTrendChart, CompareChart, ShareCard},
+  hooks: {...colocatedHooks, ...heartRateHooks, ...sensorHooks, TrackMap, HeatMap, TrackChart, MonthlyChart, SpeedHistoryChart, ProgressVolumeChart, RouteProgressMap, RouteSectorChart, RouteTrendChart, CompareChart, ShareCard},
 })
 
 // Show progress bar on live navigation and form submits

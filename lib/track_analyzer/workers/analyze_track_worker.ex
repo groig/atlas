@@ -13,7 +13,7 @@ defmodule TrackAnalyzer.Workers.AnalyzeTrackWorker do
 
   alias TrackAnalyzer.Imports
   alias TrackAnalyzer.Tracks
-  alias TrackAnalyzer.Tracks.{Analyzer, GPX, HeartRates}
+  alias TrackAnalyzer.Tracks.{Analyzer, FIT, GPX, HeartRates}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"track_id" => track_id}}) do
@@ -37,10 +37,10 @@ defmodule TrackAnalyzer.Workers.AnalyzeTrackWorker do
     with {:ok, track} <-
            Tracks.update_status(track, %{
              status: "parsing",
-             stage: "Reading GPX points",
+             stage: "Reading #{String.upcase(track.source_format || "gpx")} points",
              progress: 12
            }),
-         {:ok, parsed} <- GPX.parse_file(track.original_path),
+         {:ok, parsed} <- parse(track),
          {:ok, track} <-
            Tracks.update_status(track, %{
              status: "analyzing",
@@ -65,6 +65,9 @@ defmodule TrackAnalyzer.Workers.AnalyzeTrackWorker do
       {:error, reason} -> fail_track(track, reason)
     end
   end
+
+  defp parse(%{source_format: "fit", original_path: path}), do: FIT.parse_file(path)
+  defp parse(%{original_path: path}), do: GPX.parse_file(path)
 
   defp fail_track(nil, reason), do: {:discard, error_text(reason)}
 

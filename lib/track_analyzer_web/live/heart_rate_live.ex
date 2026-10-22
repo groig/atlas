@@ -223,7 +223,10 @@ defmodule TrackAnalyzerWeb.HeartRateLive do
                     true -> "Building a comparable history"
                   end}</span>
                   <span class="mt-2 block text-xs text-[var(--ink-muted)]">{route.signal.eligible_count} eligible / {route.signal.recorded_count} HR attempts · {if(
-                    route.signal.trend.available, do: "6-attempt trend", else: "latest pair")}</span>
+                    route.signal.trend.available,
+                    do: "6-attempt trend",
+                    else: "latest pair"
+                  )}</span>
                 </span>
                 <.icon
                   name="hero-arrow-up-right"
