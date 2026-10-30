@@ -117,23 +117,17 @@ const activeDayCount = activity => new Set(
     .map(localDateKey)
 ).size
 
-const compact = (value, precision = 1) => {
-  if(!Number.isFinite(Number(value))) return "—"
-  const number = Number(value)
-  if(Math.abs(number) >= 1_000_000) return `${(number / 1_000_000).toFixed(precision)}m`
-  if(Math.abs(number) >= 1_000) return `${(number / 1_000).toFixed(precision)}k`
-  return number.toFixed(precision)
-}
-
 const distance = meters => {
   if(!Number.isFinite(Number(meters))) return "—"
-  if(meters >= 1_000) return `${compact(meters / 1_000, meters >= 1_000_000 ? 0 : 1)} km`
+  const km = meters / 1_000
+  if(km >= 99.95) return `${Math.round(km).toLocaleString("en-US")} km`
+  if(km >= 1) return `${km.toFixed(1)} km`
   return `${Math.round(meters)} m`
 }
 
 const elevation = meters => {
   if(!Number.isFinite(Number(meters))) return "—"
-  if(meters >= 10_000) return `${compact(meters / 1_000, 1)} km`
+  if(meters >= 10_000) return `${(meters / 1_000).toLocaleString("en-US", {maximumFractionDigits: 1})} km`
   return `${Math.round(meters).toLocaleString()} m`
 }
 
