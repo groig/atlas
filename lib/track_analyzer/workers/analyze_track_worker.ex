@@ -55,10 +55,10 @@ defmodule TrackAnalyzer.Workers.AnalyzeTrackWorker do
              progress: 82
            }),
          {:ok, track} <- Tracks.persist_analysis(track, result) do
-      item_status =
-        if track.status == "insufficient_data", do: "insufficient_data", else: "complete"
+      if track.status == "insufficient_data",
+        do: Imports.mark_track_items(track.id, "skipped", track.quality["skip_reason"]),
+        else: Imports.mark_track_items(track.id, "complete")
 
-      Imports.mark_track_items(track.id, item_status)
       schedule_route_progress_rebuild()
       :ok
     else

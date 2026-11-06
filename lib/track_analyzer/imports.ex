@@ -61,6 +61,25 @@ defmodule TrackAnalyzer.Imports do
     |> order_by([archive], desc: archive.inserted_at)
     |> limit(^limit)
     |> Repo.all()
+    |> with_skipped()
+  end
+
+  @doc "Fills each archive's `skipped` list with its near-empty tracks and why."
+  def with_skipped(%SourceArchive{} = archive),
+    do: archive |> List.wrap() |> with_skipped() |> hd()
+
+  def with_skipped(archives) when is_list(archives) do
+    ids = Enum.map(archives, & &1.id)
+
+    skipped =
+      ArchiveItem
+      |> where([item], item.source_archive_id in ^ids and item.status == "skipped")
+      |> order_by([item], asc: item.position, asc: item.id)
+      |> select([item], %{archive_id: item.source_archive_id, path: item.path, reason: item.error})
+      |> Repo.all()
+      |> Enum.group_by(& &1.archive_id, &Map.delete(&1, :archive_id))
+
+    Enum.map(archives, &%{&1 | skipped: Map.get(skipped, &1.id, [])})
   end
 
   def list_batches(limit \\ 10) do
@@ -143,7 +162,7 @@ defmodule TrackAnalyzer.Imports do
 
     failed_count = Map.get(counts, "failed", 0)
     duplicate_count = Map.get(counts, "duplicate", 0)
-    done_count = complete_count + failed_count
+    done_count = complete_count + failed_count + Map.get(counts, "skipped", 0)
 
     {status, stage} =
       cond do

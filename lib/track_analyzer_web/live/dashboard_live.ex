@@ -78,7 +78,7 @@ defmodule TrackAnalyzerWeb.DashboardLive do
 
   defp assign_dashboard(socket) do
     summary = Tracks.portfolio_summary()
-    speed_summary = Tracks.speed_history(%{"metric" => "100m", "range" => "all"})
+    speed_summary = Tracks.speed_history(%{"metric" => "1km", "range" => "all"})
     progress_summary = RouteProgress.summary()
     cells = Tracks.heatmap_cells(3_000)
 
@@ -306,19 +306,19 @@ defmodule TrackAnalyzerWeb.DashboardLive do
         </.link>
         <div class="grid grid-cols-3 border-t border-black/10 lg:border-l lg:border-t-0">
           <.speed_teaser_metric
-            id="dashboard-record-100m"
-            label="100 m best"
-            record={@speed_summary.records.best_100m}
+            id="dashboard-record-1km"
+            label="1 km best"
+            record={@speed_summary.records.best_1km}
             value={
-              speed(@speed_summary.records.best_100m && @speed_summary.records.best_100m.speed_mps)
+              speed(@speed_summary.records.best_1km && @speed_summary.records.best_1km.speed_mps)
             }
           />
           <.speed_teaser_metric
-            id="dashboard-record-500m"
-            label="500 m best"
-            record={@speed_summary.records.best_500m}
+            id="dashboard-record-5km"
+            label="5 km best"
+            record={@speed_summary.records.best_5km}
             value={
-              speed(@speed_summary.records.best_500m && @speed_summary.records.best_500m.speed_mps)
+              speed(@speed_summary.records.best_5km && @speed_summary.records.best_5km.speed_mps)
             }
           />
           <.speed_teaser_metric

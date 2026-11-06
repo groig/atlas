@@ -5,10 +5,33 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
 
   alias TrackAnalyzer.Tracks.{GeoMetrics, HeartRate, Sensors}
 
-  @analysis_version 5
-  @effort_distances [100, 500, 1_000, 5_000, 10_000, 20_000, 40_000]
+  @analysis_version 6
+  @effort_distances [1_000, 5_000, 10_000, 20_000, 40_000]
+
+  # Nobody rides faster than this. A step between two GPS fixes that implies a
+  # higher speed is a position error, and so is a device speed above it.
+  @max_plausible_speed_kmh 80
+  @max_plausible_speed_mps @max_plausible_speed_kmh / 3.6
+
+  # Receivers often log a stale or rough position until they get a good fix. An
+  # implausible jump within this many seconds of a segment's start marks every
+  # earlier point of that segment as pre-fix noise.
+  @gps_warmup_s 60
+
+  # When at least this share of points carries a device channel (wheel-sensor
+  # speed or odometer distance), it replaces GPS for speed and distance.
+  @sensor_coverage 0.9
+
+  # Longer gaps between device readings are pauses, so speed is not integrated over them.
+  @max_sensor_gap_s 30
+
+  # Tracks below any of these are near-empty recordings and are skipped.
+  @min_points 10
+  @min_distance_m 200
+  @min_moving_s 60
 
   def analysis_version, do: @analysis_version
+  def max_plausible_speed_mps, do: @max_plausible_speed_mps
 
   def analyze(parsed, options \\ []) do
     config = Application.fetch_env!(:track_analyzer, :analysis)
@@ -22,8 +45,13 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
 
     hr = HeartRate.analyze(points, Keyword.get(options, :heart_rate_profile, %{}))
     sensors = Sensors.analyze(points)
-    splits = kilometer_splits(points, derived.cumulative_distance_m) ++ best_efforts(points)
-    speed_metrics = speed_metrics(points, splits, config)
+    timing_points = timing_points(points, derived.source)
+
+    splits =
+      kilometer_splits(timing_points, derived.cumulative_distance_m) ++
+        best_efforts(timing_points)
+
+    speed_metrics = speed_metrics(points, splits, derived.source)
     summary = summarize(parsed, points, derived, config, speed_metrics)
 
     summary =
@@ -45,70 +73,217 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
     }
   end
 
+  # Two passes. The GPS pass decides which fixes are plausible and how far they
+  # are apart; the credit pass decides what distance and moving time the track
+  # is credited with, from the device's sensors when it has them, else from GPS.
   defp derive_points(points, config) do
-    initial = %{
-      points: [],
-      previous_valid: nil,
-      cumulative_distance_m: 0.0,
-      moving_s: 0.0,
-      elevation_gain_m: 0.0,
-      elevation_loss_m: 0.0,
-      invalid_count: 0
-    }
-
-    points
-    |> Enum.with_index()
-    |> Enum.reduce(initial, fn {point, position}, acc ->
-      same_segment? = same_segment?(acc.previous_valid, point)
-      distance = if same_segment?, do: GeoMetrics.distance_m(acc.previous_valid, point), else: 0.0
-      delta_seconds = if same_segment?, do: seconds_between(acc.previous_valid, point), else: nil
-      speed = if delta_seconds && delta_seconds > 0, do: distance / delta_seconds
-
-      valid? =
-        is_nil(speed) or speed <= config[:max_plausible_speed_mps]
-
-      accepted_distance = if valid?, do: distance, else: 0.0
-      cumulative_distance = acc.cumulative_distance_m + accepted_distance
-
-      moving_seconds =
-        if (valid? and speed) && speed >= config[:moving_threshold_mps],
-          do: delta_seconds,
-          else: 0.0
-
-      {gain, loss} =
-        if valid? and same_segment? do
-          elevation_change(acc.previous_valid, point, config[:elevation_noise_floor_m])
-        else
-          {0.0, 0.0}
-        end
-
-      extras =
-        point.extras
-        |> Map.put("delta_seconds", delta_seconds)
-        |> Map.put("delta_distance_m", accepted_distance)
-
-      derived_point =
+    points =
+      points
+      |> Enum.with_index()
+      |> Enum.map(fn {point, position} ->
         point
         |> Map.put(:position, position)
-        |> Map.put(:derived_speed_mps, speed)
-        |> Map.put(:cumulative_distance_m, cumulative_distance)
-        |> Map.put(:valid, valid?)
-        |> Map.put(:grade_percent, nil)
-        |> Map.put(:extras, extras)
+        |> Map.put_new(:sensor_speed_mps, nil)
+        |> Map.put_new(:sensor_distance_m, nil)
+      end)
 
-      %{
-        acc
-        | points: [derived_point | acc.points],
-          previous_valid: if(valid?, do: point, else: acc.previous_valid),
-          cumulative_distance_m: cumulative_distance,
-          moving_s: acc.moving_s + moving_seconds,
-          elevation_gain_m: acc.elevation_gain_m + gain,
-          elevation_loss_m: acc.elevation_loss_m + loss,
-          invalid_count: acc.invalid_count + if(valid?, do: 0, else: 1)
-      }
-    end)
-    |> Map.update!(:points, &Enum.reverse/1)
+    source = %{
+      distance: distance_source(points),
+      speed: if(covered?(points, :sensor_speed_mps), do: :sensor, else: :gps)
+    }
+
+    gps = gps_pass(points, warmup_positions(points), config)
+
+    {points, credit} =
+      Enum.map_reduce(gps.points, %{previous: nil, distance: 0.0, moving: 0.0}, fn point, acc ->
+        {delta, seconds} = credit(acc.previous, point, source.distance)
+        distance = acc.distance + delta
+
+        moving =
+          if is_number(seconds) and seconds > 0 and
+               delta / seconds >= config[:moving_threshold_mps],
+             do: seconds,
+             else: 0.0
+
+        point =
+          point
+          |> Map.put(:cumulative_distance_m, distance)
+          |> Map.update!(:extras, fn extras ->
+            extras
+            |> Map.put("delta_seconds", seconds)
+            |> Map.put("delta_distance_m", delta)
+          end)
+
+        {point, %{previous: point, distance: distance, moving: acc.moving + moving}}
+      end)
+
+    %{
+      points: points,
+      source: source,
+      cumulative_distance_m: credit.distance,
+      moving_s: credit.moving,
+      elevation_gain_m: gps.gain,
+      elevation_loss_m: gps.loss,
+      invalid_count: gps.spikes + gps.warmup,
+      spike_count: gps.spikes,
+      warmup_count: gps.warmup
+    }
   end
+
+  defp distance_source(points) do
+    cond do
+      covered?(points, :sensor_distance_m) -> :odometer
+      covered?(points, :sensor_speed_mps) -> :wheel_speed
+      true -> :gps
+    end
+  end
+
+  defp covered?([], _field), do: false
+
+  defp covered?(points, field),
+    do: Enum.count(points, &is_number(Map.get(&1, field))) / length(points) >= @sensor_coverage
+
+  # Positions logged before the receiver settled: everything ahead of the last
+  # implausible step that happens within the first seconds of a segment.
+  defp warmup_positions(points) do
+    points
+    |> Enum.chunk_by(&{&1.track_position, &1.segment_position})
+    |> Enum.flat_map(fn [first | _] = segment ->
+      cut =
+        segment
+        |> Enum.chunk_every(2, 1, :discard)
+        |> Enum.filter(fn [a, b] ->
+          elapsed = seconds_between(first, b)
+
+          is_number(elapsed) and elapsed <= @gps_warmup_s and
+            not plausible_step?(step_speed(a, b))
+        end)
+        |> List.last()
+
+      case cut do
+        nil ->
+          []
+
+        [_a, b] ->
+          segment |> Enum.take_while(&(&1.position < b.position)) |> Enum.map(& &1.position)
+      end
+    end)
+    |> MapSet.new()
+  end
+
+  # Each fix is measured from the last accepted one (the anchor). An implausible
+  # step is rejected, so a lone spike never moves the track. When the receiver
+  # relocates for good, the fix after the rejected one is plausible relative to
+  # it, and the track continues from there; the jump itself is never credited.
+  defp gps_pass(points, warmup, config) do
+    initial = %{anchor: nil, pending: nil, out: [], gain: 0.0, loss: 0.0, spikes: 0, warmup: 0}
+
+    points
+    |> Enum.reduce(initial, fn point, acc ->
+      cond do
+        MapSet.member?(warmup, point.position) ->
+          point = gps_point(point, false, nil, 0.0, nil, %{"gps_warmup" => true})
+          %{acc | out: [point | acc.out], warmup: acc.warmup + 1}
+
+        not same_segment?(acc.anchor, point) ->
+          point = gps_point(point, true, nil, 0.0, nil)
+          %{acc | out: [point | acc.out], anchor: point, pending: nil}
+
+        plausible_step?(step_speed(acc.anchor, point)) ->
+          accept(acc, acc.anchor, point, config)
+
+        acc.pending && plausible_step?(step_speed(acc.pending, point)) ->
+          accept(acc, acc.pending, point, config)
+
+        true ->
+          point = gps_point(point, false, step_speed(acc.anchor, point), 0.0, nil)
+          %{acc | out: [point | acc.out], pending: point, spikes: acc.spikes + 1}
+      end
+    end)
+    |> then(fn acc -> acc |> Map.put(:points, Enum.reverse(acc.out)) |> Map.delete(:out) end)
+  end
+
+  defp accept(acc, from, point, config) do
+    distance = GeoMetrics.distance_m(from, point)
+    seconds = seconds_between(from, point)
+    speed = if is_number(seconds) and seconds > 0, do: distance / seconds
+    {gain, loss} = elevation_change(from, point, config[:elevation_noise_floor_m])
+    point = gps_point(point, true, speed, distance, seconds)
+
+    %{
+      acc
+      | out: [point | acc.out],
+        anchor: point,
+        pending: nil,
+        gain: acc.gain + gain,
+        loss: acc.loss + loss
+    }
+  end
+
+  defp gps_point(point, valid?, speed, distance, seconds, extras \\ %{}) do
+    point
+    |> Map.put(:valid, valid?)
+    |> Map.put(:derived_speed_mps, speed)
+    |> Map.put(:grade_percent, nil)
+    |> Map.put(
+      :extras,
+      point.extras |> Map.merge(extras) |> Map.put("gps_delta_distance_m", distance)
+    )
+    |> Map.put(:gps_delta_seconds, seconds)
+  end
+
+  defp step_speed(from, to) do
+    seconds = seconds_between(from, to)
+    if is_number(seconds) and seconds > 0, do: GeoMetrics.distance_m(from, to) / seconds
+  end
+
+  # Without a timestamp a step cannot be judged, so it is kept.
+  defp plausible_step?(nil), do: true
+  defp plausible_step?(speed), do: speed <= @max_plausible_speed_mps
+
+  defp plausible_speed?(speed), do: is_number(speed) and speed <= @max_plausible_speed_mps
+
+  # Distance and time credited to the span that ends at `point`.
+  defp credit(_previous, point, :gps) do
+    if point.valid,
+      do: {point.extras["gps_delta_distance_m"], point.gps_delta_seconds},
+      else: {0.0, nil}
+  end
+
+  defp credit(previous, point, _sensor) do
+    seconds = if same_segment?(previous, point), do: seconds_between(previous, point)
+
+    if is_number(seconds) and seconds > 0 do
+      {sensor_delta(previous, point, seconds), seconds}
+    else
+      {0.0, nil}
+    end
+  end
+
+  # The odometer first; a reset or a dropout falls back to wheel speed, then to
+  # GPS when the previous fix was this one's anchor, so nothing is counted twice.
+  defp sensor_delta(previous, point, seconds) do
+    odometer =
+      if is_number(previous.sensor_distance_m) and is_number(point.sensor_distance_m),
+        do: point.sensor_distance_m - previous.sensor_distance_m
+
+    cond do
+      is_number(odometer) and odometer >= 0 and plausible_speed?(odometer / seconds) ->
+        odometer
+
+      plausible_speed?(point.sensor_speed_mps) and seconds <= @max_sensor_gap_s ->
+        point.sensor_speed_mps * seconds
+
+      point.valid and previous.valid and point.gps_delta_seconds == seconds ->
+        point.extras["gps_delta_distance_m"]
+
+      true ->
+        0.0
+    end
+  end
+
+  defp timing_points(points, %{distance: :gps}), do: Enum.filter(points, & &1.valid)
+  defp timing_points(points, _sensor), do: points
 
   defp add_grades(points, window_m) do
     {graded, _prior} =
@@ -140,8 +315,9 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
   end
 
   defp summarize(parsed, points, derived, config, speed_metrics) do
-    first = List.first(points)
-    last = List.last(points)
+    located = Enum.filter(points, & &1.valid)
+    first = List.first(located)
+    last = List.last(located)
     times = points |> Enum.map(& &1.recorded_at) |> Enum.reject(&is_nil/1)
     elevations = points |> Enum.map(& &1.elevation_m) |> Enum.reject(&is_nil/1)
     started_at = Enum.min(times, DateTime, fn -> nil end)
@@ -169,7 +345,7 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
       |> subtract_ratio(high_hdop, point_count, 15)
       |> max(0.0)
 
-    bounds = bounds(points)
+    bounds = bounds(located)
     timezone = timezone(first)
 
     %{
@@ -185,8 +361,8 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
       stopped_s: stopped_s,
       avg_speed_mps: if(derived.moving_s > 0, do: distance_m / derived.moving_s, else: nil),
       max_speed_mps: speed_metrics.max_speed_mps,
-      best_100m_speed_mps: speed_metrics.best_100m_speed_mps,
-      best_500m_speed_mps: speed_metrics.best_500m_speed_mps,
+      best_1km_speed_mps: speed_metrics.best_1km_speed_mps,
+      best_5km_speed_mps: speed_metrics.best_5km_speed_mps,
       max_speed_confidence: speed_metrics.max_speed_confidence,
       max_speed_point_position: speed_metrics.max_speed_point_position,
       elevation_gain_m: derived.elevation_gain_m,
@@ -209,40 +385,80 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
         "median_sample_seconds" => median_sample_seconds(points),
         "moving_threshold_mps" => config[:moving_threshold_mps],
         "speed_p95_mps" => speed_metrics.speed_p95_mps,
-        "max_speed_confidence_reasons" => speed_metrics.confidence_reasons
+        "max_speed_confidence_reasons" => speed_metrics.confidence_reasons,
+        "max_plausible_speed_mps" => @max_plausible_speed_mps,
+        "distance_source" => Atom.to_string(derived.source.distance),
+        "speed_source" => Atom.to_string(derived.source.speed)
       },
       quality: %{
-        "invalid_spike_points" => derived.invalid_count,
+        "invalid_spike_points" => derived.spike_count,
+        "gps_warmup_points" => derived.warmup_count,
         "invalid_coordinate_points" => parsed.invalid_point_count,
         "records_without_position" => Map.get(parsed, :records_without_position, 0),
         "missing_time_points" => missing_time,
         "missing_elevation_points" => missing_elevation,
         "high_hdop_points" => high_hdop
-      }
+      },
+      skip_reason: skip_reason(point_count, distance_m, derived.moving_s)
     }
   end
 
-  defp speed_metrics(points, splits, config) do
-    valid_speed_points =
-      points
-      |> Enum.filter(fn point ->
-        point.valid and speed_for(point) > 0 and
-          speed_for(point) <= config[:max_plausible_speed_mps]
+  @doc """
+  Why a track is too empty to count, or nil. Skipped tracks are kept and listed
+  in the import log, but stay out of totals, records and recaps.
+  """
+  def skip_reason(point_count, distance_m, moving_s) do
+    cond do
+      point_count < @min_points ->
+        "only #{point_count} #{if point_count == 1, do: "point", else: "points"}"
+
+      (distance_m || 0) < @min_distance_m ->
+        "only #{round(distance_m || 0)} m long"
+
+      (moving_s || 0) < @min_moving_s ->
+        "only #{round(moving_s || 0)} s of movement"
+
+      true ->
+        nil
+    end
+  end
+
+  defp speed_metrics(points, splits, source) do
+    candidates =
+      Enum.filter(points, fn point ->
+        speed = peak_speed(point, source.speed)
+        is_number(speed) and speed > 0
       end)
 
-    peak = Enum.max_by(valid_speed_points, &speed_for/1, fn -> nil end)
-    {confidence, reasons} = peak_confidence(points, peak)
+    peak = Enum.max_by(candidates, &peak_speed(&1, source.speed), fn -> nil end)
+    {confidence, reasons} = peak_confidence(points, peak, source.speed)
 
     %{
-      max_speed_mps: if(peak, do: speed_for(peak)),
+      max_speed_mps: if(peak, do: peak_speed(peak, source.speed)),
       max_speed_point_position: if(peak, do: peak.position),
       max_speed_confidence: confidence,
-      best_100m_speed_mps: effort_speed(splits, 100),
-      best_500m_speed_mps: effort_speed(splits, 500),
-      speed_p95_mps: percentile(Enum.map(valid_speed_points, &speed_for/1), 0.95),
+      best_1km_speed_mps: effort_speed(splits, 1_000),
+      best_5km_speed_mps: effort_speed(splits, 5_000),
+      speed_p95_mps: percentile(Enum.map(candidates, &peak_speed(&1, source.speed)), 0.95),
       confidence_reasons: reasons
     }
   end
+
+  # With a wheel sensor, the peak is a sensor reading; GPS never competes with it.
+  defp peak_speed(point, :sensor) do
+    if plausible_speed?(point.sensor_speed_mps), do: point.sensor_speed_mps
+  end
+
+  # A position-derived peak the recorder's own speed does not confirm is the
+  # tail of a GPS error (a displaced fix next to a rejected one), not a peak.
+  defp peak_speed(point, :gps) do
+    speed = gps_speed(point)
+    if plausible_speed?(speed) and device_check(point) != :disagrees, do: speed
+  end
+
+  defp gps_speed(%{valid: true, derived_speed_mps: speed}) when is_number(speed), do: speed
+  defp gps_speed(%{valid: true, recorded_speed_mps: speed}) when is_number(speed), do: speed
+  defp gps_speed(_point), do: nil
 
   defp effort_speed(splits, distance) do
     case Enum.find(splits, &(&1.kind == "best_effort" and &1.position == distance)) do
@@ -251,10 +467,25 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
     end
   end
 
-  defp peak_confidence(_points, nil), do: {nil, []}
+  defp peak_confidence(_points, nil, _source), do: {nil, []}
 
-  defp peak_confidence(points, peak) do
-    interval = Map.get(peak.extras, "delta_seconds")
+  # Wheel speed changes smoothly, so a real peak has a neighbour close to it.
+  defp peak_confidence(points, peak, :sensor) do
+    corroborated? =
+      points
+      |> neighbours(peak)
+      |> Enum.any?(
+        &(plausible_speed?(&1.sensor_speed_mps) and
+            &1.sensor_speed_mps >= peak.sensor_speed_mps * 0.8)
+      )
+
+    if corroborated?,
+      do: {"high", []},
+      else: {"medium", ["no adjacent wheel-sensor reading within 80% of the peak"]}
+  end
+
+  defp peak_confidence(points, peak, :gps) do
+    interval = peak.gps_delta_seconds
     timing_ok? = is_number(interval) and interval >= 1 and interval <= 15
     hdop_ok? = is_nil(peak.hdop) or peak.hdop <= 10
     device = device_check(peak)
@@ -281,20 +512,29 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
     {confidence, reasons}
   end
 
-  # A recorder's own speed (often a wheel sensor) is an independent check on a
-  # GPS-derived peak, which a single misplaced fix can inflate.
+  # A recorder's own speed (a wheel sensor, or the GPS Doppler speed OsmAnd
+  # writes) is an independent check on a speed derived from positions, which a
+  # single misplaced fix can inflate.
   defp device_check(peak) do
-    case Map.get(peak, :sensor_speed_mps) do
-      device when is_number(device) ->
-        if device >= speed_for(peak) * 0.8, do: :agrees, else: :disagrees
+    case {device_speed(peak), gps_speed(peak)} do
+      {device, gps} when is_number(device) and is_number(gps) ->
+        if device >= gps * 0.8, do: :agrees, else: :disagrees
 
       _missing ->
         :unavailable
     end
   end
 
+  defp device_speed(%{sensor_speed_mps: speed}) when is_number(speed), do: speed
+
+  defp device_speed(%{derived_speed_mps: derived, recorded_speed_mps: speed})
+       when is_number(derived) and is_number(speed),
+       do: speed
+
+  defp device_speed(_point), do: nil
+
   defp device_speed_kmh(peak) do
-    case Map.get(peak, :sensor_speed_mps) do
+    case device_speed(peak) do
       device when is_number(device) -> :erlang.float_to_binary(device * 3.6, decimals: 1)
       _missing -> "—"
     end
@@ -302,10 +542,19 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
 
   defp corroborated_peak?(points, peak) do
     points
-    |> Enum.filter(fn point ->
-      same_segment?(point, peak) and abs(point.position - peak.position) == 1 and point.valid
+    |> neighbours(peak)
+    |> Enum.any?(fn point ->
+      speed = gps_speed(point)
+      is_number(speed) and speed >= gps_speed(peak) * 0.8
     end)
-    |> Enum.any?(&(speed_for(&1) >= speed_for(peak) * 0.8))
+  end
+
+  # Points carry their list index as position, so neighbours are direct lookups.
+  defp neighbours(points, point) do
+    [point.position - 1, point.position + 1]
+    |> Enum.filter(&(&1 >= 0))
+    |> Enum.map(&Enum.at(points, &1))
+    |> Enum.filter(&(&1 && same_segment?(&1, point)))
   end
 
   defp maybe_reason(reasons, true, _reason), do: reasons
@@ -586,7 +835,7 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
         series: %{
           "distance_km" => Enum.map(sampled, &round_to(&1.cumulative_distance_m / 1_000, 3)),
           "elevation_m" => Enum.map(sampled, &round_or_nil(&1.elevation_m, 1)),
-          "speed_kmh" => Enum.map(sampled, &round_or_nil(speed_for(&1) * 3.6, 1)),
+          "speed_kmh" => Enum.map(sampled, &round_or_nil(kmh(speed_or_nil(&1)), 1)),
           "grade_percent" => Enum.map(sampled, &round_or_nil(&1.grade_percent, 1)),
           "heart_rate_bpm" => Enum.map(sampled, & &1.heart_rate_bpm),
           "hr_jump" => Enum.map(sampled, & &1.extras["hr_jump"]),
@@ -666,12 +915,14 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
 
   defp elevation_change(_left, _right, _floor), do: {0.0, 0.0}
 
-  defp speed_for(point) do
-    cond do
-      is_number(point.derived_speed_mps) -> point.derived_speed_mps
-      is_number(point.recorded_speed_mps) -> point.recorded_speed_mps
-      true -> 0.0
-    end
+  defp speed_for(point), do: speed_or_nil(point) || 0.0
+
+  # The device's own speed when it is plausible, else the speed between
+  # accepted fixes. A rejected fix has no speed at all.
+  defp speed_or_nil(point) do
+    if plausible_speed?(point.sensor_speed_mps),
+      do: point.sensor_speed_mps,
+      else: gps_speed(point)
   end
 
   defp positive_elevation(points, start_distance, end_distance) do
@@ -754,6 +1005,9 @@ defmodule TrackAnalyzer.Tracks.Analyzer do
   defp min_or_nil(values), do: Enum.min(values)
   defp max_or_nil([]), do: nil
   defp max_or_nil(values), do: Enum.max(values)
+
+  defp kmh(nil), do: nil
+  defp kmh(mps), do: mps * 3.6
 
   defp round_or_nil(nil, _precision), do: nil
   defp round_or_nil(number, precision), do: round_to(number, precision)

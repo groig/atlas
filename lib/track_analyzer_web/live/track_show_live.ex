@@ -222,7 +222,11 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
         </section>
 
         <section id="track-metrics" class="mt-7 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <.metric label="Distance" value={distance(@track.distance_m)} note="spike filtered" />
+          <.metric
+            label="Distance"
+            value={distance(@track.distance_m)}
+            note={distance_note(@track)}
+          />
           <.metric
             label="Moving"
             value={duration(@track.moving_s)}
@@ -236,16 +240,16 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
           <.metric
             label="Instant max"
             value={speed(@track.max_speed_mps)}
-            note={confidence_note(@track.max_speed_confidence)}
+            note={max_speed_note(@track)}
           />
           <.metric
-            label="Best 100 m"
-            value={speed(@track.best_100m_speed_mps)}
+            label="Best 1 km"
+            value={speed(@track.best_1km_speed_mps)}
             note="sustained"
           />
           <.metric
-            label="Best 500 m"
-            value={speed(@track.best_500m_speed_mps)}
+            label="Best 5 km"
+            value={speed(@track.best_5km_speed_mps)}
             note="sustained"
           />
         </section>
@@ -481,8 +485,18 @@ defmodule TrackAnalyzerWeb.TrackShowLive do
     """
   end
 
-  defp confidence_note(nil), do: "not rated"
-  defp confidence_note(confidence), do: "#{confidence} confidence"
+  defp distance_note(track) do
+    if track.stats["distance_source"] in ["odometer", "wheel_speed"],
+      do: "wheel sensor",
+      else: "GPS, spikes removed"
+  end
+
+  defp max_speed_note(%{max_speed_confidence: nil}), do: "not rated"
+
+  defp max_speed_note(%{stats: %{"speed_source" => "sensor"}} = track),
+    do: "wheel sensor · #{track.max_speed_confidence} confidence"
+
+  defp max_speed_note(track), do: "#{track.max_speed_confidence} confidence"
 
   defp speed_confidence_detail(track) do
     case track.stats["max_speed_confidence_reasons"] do

@@ -29,8 +29,7 @@ config :track_analyzer, :analysis,
   moving_threshold_mps: 2.0 / 3.6,
   stop_minimum_seconds: 30,
   grade_window_m: 100,
-  elevation_noise_floor_m: 3.0,
-  max_plausible_speed_mps: 150.0 / 3.6
+  elevation_noise_floor_m: 3.0
 
 config :track_analyzer, :maps,
   tile_url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",

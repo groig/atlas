@@ -20,6 +20,8 @@ defmodule TrackAnalyzer.Imports.SourceArchive do
     field :complete_count, :integer, default: 0
     field :warning, :string
     field :error, :string
+    # Near-empty tracks of this upload, filled by Imports.with_skipped/1.
+    field :skipped, {:array, :map}, virtual: true, default: []
 
     belongs_to :import_batch, TrackAnalyzer.Imports.ImportBatch
     has_many :items, TrackAnalyzer.Imports.ArchiveItem

@@ -12,7 +12,7 @@ defmodule TrackAnalyzer.Tracks.GPXTest do
     assert parsed.name == "Morning Loop"
     assert parsed.creator == "OsmAnd test"
     assert parsed.activity_type == "cycling"
-    assert length(parsed.points) == 3
+    assert length(parsed.points) == 12
 
     assert Enum.all?(parsed.points, fn point ->
              point.latitude >= 55.60 and point.latitude <= 55.75 and
@@ -23,15 +23,15 @@ defmodule TrackAnalyzer.Tracks.GPXTest do
     assert hd(parsed.points).recorded_at.microsecond == {0, 6}
 
     analysis = Analyzer.analyze(parsed)
-    assert analysis.summary.point_count == 3
+    assert analysis.summary.point_count == 12
     assert analysis.summary.distance_m > 250
     assert analysis.summary.elevation_gain_m == 6.0
     assert analysis.summary.quality_score == 100.0
     assert analysis.summary.analysis_version == Analyzer.analysis_version()
     assert analysis.summary.activity_type == "cycling"
     assert analysis.summary.max_speed_mps > 0
-    assert analysis.summary.best_100m_speed_mps > 0
-    assert analysis.summary.best_500m_speed_mps == nil
+    assert analysis.summary.best_1km_speed_mps > 0
+    assert analysis.summary.best_5km_speed_mps == nil
     assert analysis.summary.max_speed_confidence in ~w(high medium low)
     detail = Enum.find(analysis.renderings, &(&1.level == "detail"))
     assert detail.point_count == length(Polyline.decode(detail.encoded_polyline))

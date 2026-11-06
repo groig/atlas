@@ -8,6 +8,18 @@ defmodule TrackAnalyzer.Tracks.HeartRate do
   @durations [60, 300, 600, 1_200]
   @moving_threshold 2 / 3.6
 
+  # Wrist optical sensors sometimes lock onto pedaling cadence and report it as
+  # heart rate. A stretch where HR stays within @lock_tolerance_bpm of a non-zero
+  # cadence for at least @lock_min_s is treated as locked. Mismatches of up to
+  # @lock_max_break_s do not end it (per-second cadence is noisier than optical
+  # HR). Once found, its edges extend while HR still follows cadence within
+  # @lock_edge_tolerance_bpm. Locked samples keep their recorded value but are
+  # left out of every HR statistic.
+  @lock_tolerance_bpm 3
+  @lock_min_s 60
+  @lock_max_break_s 3
+  @lock_edge_tolerance_bpm 8
+
   def normalize(value) when is_binary(value) do
     case Float.parse(String.trim(value)) do
       {number, ""} -> normalize(number)
@@ -43,12 +55,150 @@ defmodule TrackAnalyzer.Tracks.HeartRate do
         {point, point}
       end)
 
-    points
+    flag_cadence_lock(points)
   end
+
+  @doc "True when this sample was flagged as cadence picked up by the HR sensor."
+  def cadence_lock?(point), do: (Map.get(point, :extras) || %{})["hr_cadence_lock"] == true
+
+  defp usable_hr?(point),
+    do: is_number(Map.get(point, :heart_rate_bpm)) and not cadence_lock?(point)
+
+  defp flag_cadence_lock(points) do
+    samples = List.to_tuple(points)
+
+    locked =
+      samples
+      |> lock_cores()
+      |> Enum.map(fn {first, last} ->
+        {extend_lock(samples, first, -1), extend_lock(samples, last, 1)}
+      end)
+      |> Enum.flat_map(fn {first, last} -> Enum.to_list(first..last) end)
+      |> MapSet.new()
+
+    if MapSet.size(locked) == 0 do
+      points
+    else
+      points
+      |> Enum.with_index()
+      |> Enum.map(fn {point, index} ->
+        if MapSet.member?(locked, index),
+          do: Map.update!(point, :extras, &Map.put(&1, "hr_cadence_lock", true)),
+          else: point
+      end)
+    end
+  end
+
+  # Index ranges {first, last} of runs that match closely for long enough.
+  defp lock_cores(samples) do
+    {cores, run} =
+      Enum.reduce(0..(tuple_size(samples) - 1)//1, {[], nil}, fn index, {cores, run} ->
+        point = elem(samples, index)
+
+        cond do
+          (lock_match?(point, @lock_tolerance_bpm) and run) &&
+              lock_continues?(elem(samples, elem(run, 1)), point, @lock_max_break_s + 1) ->
+            {cores, {elem(run, 0), index}}
+
+          lock_match?(point, @lock_tolerance_bpm) ->
+            {close_core(samples, run, cores), {index, index}}
+
+          run && pedaling?(point) &&
+              lock_continues?(elem(samples, elem(run, 1)), point, @lock_max_break_s) ->
+            {cores, run}
+
+          true ->
+            {close_core(samples, run, cores), nil}
+        end
+      end)
+
+    samples |> close_core(run, cores) |> Enum.reverse()
+  end
+
+  defp close_core(_samples, nil, cores), do: cores
+
+  defp close_core(samples, {first, last}, cores) do
+    duration = seconds(elem(samples, first), elem(samples, last))
+    if is_number(duration) and duration >= @lock_min_s, do: [{first, last} | cores], else: cores
+  end
+
+  # Walks outward from a core edge with the looser tolerance and the same bridging.
+  defp extend_lock(samples, edge, step) do
+    Stream.iterate(edge + step, &(&1 + step))
+    |> Enum.reduce_while(edge, fn index, last_good ->
+      if index < 0 or index >= tuple_size(samples) do
+        {:halt, last_good}
+      else
+        point = elem(samples, index)
+        anchor = elem(samples, last_good)
+        {a, b} = if step < 0, do: {point, anchor}, else: {anchor, point}
+
+        cond do
+          lock_match?(point, @lock_edge_tolerance_bpm) and
+              lock_continues?(a, b, @lock_max_break_s + 1) ->
+            {:cont, index}
+
+          pedaling?(point) and lock_continues?(a, b, @lock_max_break_s) ->
+            {:cont, last_good}
+
+          true ->
+            {:halt, last_good}
+        end
+      end
+    end)
+  end
+
+  defp lock_match?(point, tolerance) do
+    pedaling?(point) and abs(point.heart_rate_bpm - point.cadence_rpm) <= tolerance
+  end
+
+  defp pedaling?(point) do
+    cadence = Map.get(point, :cadence_rpm)
+    is_number(cadence) and cadence > 0 and is_number(Map.get(point, :heart_rate_bpm))
+  end
+
+  defp lock_continues?(a, b, max_seconds) do
+    dt = seconds(a, b)
+    same_segment?(a, b) and is_number(dt) and dt > 0 and dt <= max_seconds
+  end
+
+  defp lock_summary(points, origin) do
+    locked = Enum.filter(points, &cadence_lock?/1)
+
+    segments =
+      points
+      |> Enum.chunk_by(&cadence_lock?/1)
+      |> Enum.filter(&cadence_lock?(hd(&1)))
+      |> Enum.map(fn run ->
+        first = hd(run)
+        last = List.last(run)
+
+        %{
+          "start_s" => offset(origin, first),
+          "end_s" => offset(origin, last),
+          "start_distance_m" => Map.get(first, :cumulative_distance_m),
+          "end_distance_m" => Map.get(last, :cumulative_distance_m),
+          "average_bpm" => average(run, :heart_rate_bpm),
+          "average_rpm" => average(run, :cadence_rpm)
+        }
+      end)
+
+    %{
+      "samples" => length(locked),
+      "seconds" =>
+        Enum.reduce(segments, 0.0, fn s, total ->
+          total + ((s["end_s"] || 0) - (s["start_s"] || 0))
+        end),
+      "segments" => segments
+    }
+  end
+
+  defp average(points, field),
+    do: Enum.reduce(points, 0.0, &(Map.fetch!(&1, field) + &2)) / length(points)
 
   def analyze(points, profile \\ %{}) do
     spans = intervals(points)
-    valid = Enum.filter(points, &is_number(Map.get(&1, :heart_rate_bpm)))
+    valid = Enum.filter(points, &usable_hr?/1)
     peak = Enum.max_by(valid, & &1.heart_rate_bpm, fn -> nil end)
     total = elapsed(points)
     covered = sum(spans, :duration_s)
@@ -84,7 +234,8 @@ defmodule TrackAnalyzer.Tracks.HeartRate do
       "duration_curve" => duration_curve(spans),
       "sectors" => sectors(spans, points),
       "drift" => drift(spans),
-      "jumps" => jumps
+      "jumps" => jumps,
+      "cadence_lock" => lock_summary(points, origin)
     }
 
     quality = %{
@@ -96,6 +247,7 @@ defmodule TrackAnalyzer.Tracks.HeartRate do
           &(not is_nil(&1.extras["hr"]) and is_nil(Map.get(&1, :heart_rate_bpm)))
         ),
       "suspect_transitions" => length(jumps),
+      "cadence_lock_samples" => Enum.count(points, &cadence_lock?/1),
       "uncovered_s" => max(total - covered, 0)
     }
 
@@ -115,17 +267,13 @@ defmodule TrackAnalyzer.Tracks.HeartRate do
       |> Enum.map_reduce(nil, fn [a, b], moving_since ->
         dt = seconds(a, b)
         time_ok = origin != nil and is_number(dt) and dt > 0 and dt <= 30 and same_segment?(a, b)
-        speed = Map.get(b, :derived_speed_mps)
-
-        moving =
-          time_ok and Map.get(b, :valid, true) and is_number(speed) and speed >= @moving_threshold
+        speed = span_speed(b)
+        moving = time_ok and is_number(speed) and speed >= @moving_threshold
 
         start = if(time_ok, do: DateTime.diff(a.recorded_at, origin, :millisecond) / 1000)
         moving_since = if moving, do: moving_since || start, else: nil
 
-        hr_ok =
-          time_ok and is_number(Map.get(a, :heart_rate_bpm)) and
-            is_number(Map.get(b, :heart_rate_bpm))
+        hr_ok = time_ok and usable_hr?(a) and usable_hr?(b)
 
         span =
           if time_ok do
@@ -153,6 +301,22 @@ defmodule TrackAnalyzer.Tracks.HeartRate do
       end)
 
     Enum.reject(spans, &is_nil/1)
+  end
+
+  # Wheel-sensor speed when recorded, else GPS speed between accepted fixes.
+  defp span_speed(point) do
+    sensor = Map.get(point, :sensor_speed_mps)
+
+    cond do
+      is_number(sensor) and sensor <= TrackAnalyzer.Tracks.Analyzer.max_plausible_speed_mps() ->
+        sensor
+
+      Map.get(point, :valid, true) ->
+        Map.get(point, :derived_speed_mps)
+
+      true ->
+        nil
+    end
   end
 
   def selection(points, origin, from, until) do

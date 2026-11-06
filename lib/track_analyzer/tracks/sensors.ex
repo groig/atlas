@@ -248,7 +248,7 @@ defmodule TrackAnalyzer.Tracks.Sensors do
             device_distance: distance_delta(a, b),
             gps_speed: gps_speed,
             gps_valid?: gps_valid?,
-            gps_distance: get_in(b, [:extras, "delta_distance_m"]) || 0.0,
+            gps_distance: gps_distance(b),
             speed: speed,
             grade: Map.get(b, :grade_percent),
             moving?: is_number(speed) and speed >= @moving_threshold_mps
@@ -258,6 +258,13 @@ defmodule TrackAnalyzer.Tracks.Sensors do
         []
       end
     end)
+  end
+
+  # The track's credited distance may come from the odometer, so the comparison
+  # reads the GPS distance kept beside it (older analyses only stored one).
+  defp gps_distance(point) do
+    extras = Map.get(point, :extras, %{})
+    extras["gps_delta_distance_m"] || extras["delta_distance_m"] || 0.0
   end
 
   # Odometers reset when a recording restarts; a drop is a reset, not negative travel.

@@ -33,8 +33,8 @@ defmodule TrackAnalyzer.Tracks.DashboardSummaryTest do
         moving_s: 100.0,
         elevation_gain_m: 80.0,
         max_speed_mps: 12.0,
-        best_100m_speed_mps: 10.0,
-        best_500m_speed_mps: 7.0,
+        best_1km_speed_mps: 10.0,
+        best_5km_speed_mps: 7.0,
         quality_score: 90.0
       })
 
@@ -44,8 +44,8 @@ defmodule TrackAnalyzer.Tracks.DashboardSummaryTest do
         moving_s: 400.0,
         elevation_gain_m: 140.0,
         max_speed_mps: 15.0,
-        best_100m_speed_mps: 9.0,
-        best_500m_speed_mps: 8.0,
+        best_1km_speed_mps: 9.0,
+        best_5km_speed_mps: 8.0,
         quality_score: 100.0,
         max_speed_confidence: "medium"
       })
@@ -59,8 +59,8 @@ defmodule TrackAnalyzer.Tracks.DashboardSummaryTest do
     assert summary.avg_speed_mps == 6.0
     assert summary.max_speed_mps == 15.0
     assert summary.max_speed_confidence == "medium"
-    assert summary.best_100m_speed_mps == 10.0
-    assert summary.best_500m_speed_mps == 8.0
+    assert summary.best_1km_speed_mps == 10.0
+    assert summary.best_5km_speed_mps == 8.0
     assert summary.longest_distance_m == 2_000.0
     assert summary.highest_elevation_gain_m == 140.0
     assert summary.longest_moving_s == 400.0

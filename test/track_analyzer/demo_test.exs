@@ -23,8 +23,8 @@ defmodule TrackAnalyzer.DemoTest do
     analysis = Analyzer.analyze(parsed)
     assert String.starts_with?(analysis.summary.name, "DEMO · ")
     assert analysis.summary.point_count == 220
-    assert analysis.summary.best_100m_speed_mps > 0
-    assert analysis.summary.best_500m_speed_mps > 0
+    assert analysis.summary.best_1km_speed_mps > 0
+    assert analysis.summary.best_5km_speed_mps > 0
     assert analysis.summary.bounds["min_lat"] > 55.60
     assert analysis.summary.bounds["max_lat"] < 55.75
     assert analysis.summary.bounds["min_lon"] > 12.45

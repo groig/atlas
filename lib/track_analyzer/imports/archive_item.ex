@@ -34,7 +34,7 @@ defmodule TrackAnalyzer.Imports.ArchiveItem do
     |> validate_required([:source_archive_id, :position, :path, :type])
     |> validate_inclusion(
       :status,
-      ~w(queued extracted processing complete duplicate insufficient_data failed ignored)
+      ~w(queued extracted processing complete duplicate insufficient_data skipped failed ignored)
     )
     |> unique_constraint([:source_archive_id, :path])
   end

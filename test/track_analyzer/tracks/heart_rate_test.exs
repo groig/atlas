@@ -128,4 +128,72 @@ defmodule TrackAnalyzer.Tracks.HeartRateTest do
 
     assert isolated.summary["load"] == nil
   end
+
+  describe "cadence lock" do
+    # 1 Hz samples: a list of {hr, cadence} pairs.
+    defp ride(samples) do
+      samples
+      |> Enum.with_index()
+      |> Enum.map(fn {{hr, cadence}, i} ->
+        %{
+          position: i,
+          recorded_at: DateTime.add(~U[2026-11-03 21:38:48Z], i),
+          heart_rate_bpm: hr * 1.0,
+          cadence_rpm: cadence && cadence * 1.0,
+          extras: %{"hr" => hr, "delta_seconds" => 1},
+          segment_position: 0,
+          cumulative_distance_m: i * 7.0,
+          derived_speed_mps: 7.0,
+          valid: true,
+          grade_percent: 0.0
+        }
+      end)
+      |> HeartRate.prepare()
+    end
+
+    defp locked(points), do: Enum.count(points, &HeartRate.cadence_lock?/1)
+
+    test "HR tracking cadence for a minute is flagged, kept, and left out of the stats" do
+      # 5 min of real HR around 140, then 90 s where the sensor reads cadence.
+      honest = for _ <- 1..300, do: {140, 85}
+      lock = for i <- 1..90, do: {84 + rem(i, 3), 83 + rem(i, 2)}
+      points = ride(honest ++ lock ++ honest)
+
+      assert locked(points) >= 90
+      # The raw value is still there.
+      assert Enum.at(points, 330).heart_rate_bpm in [84.0, 85.0, 86.0]
+
+      result = HeartRate.analyze(points)
+      assert_in_delta result.summary["average_bpm"], 140, 0.01
+      assert result.summary["minimum_bpm"] == 140.0
+      assert result.summary["cadence_lock"]["samples"] == locked(points)
+      assert [segment] = result.summary["cadence_lock"]["segments"]
+      assert_in_delta segment["start_distance_m"], 300 * 7.0, 7.0
+      assert result.quality["cadence_lock_samples"] == locked(points)
+      assert Enum.all?(result.summary["histogram"], &(&1["bpm"] >= 140))
+    end
+
+    test "brief mismatches do not break a lock, and its edges follow HR down to cadence" do
+      # HR falls from 120 towards cadence, then tracks it with 1-2 s blips, like
+      # the 2026-11-03 ride around km 2-3.
+      approach = for hr <- 100..92//-1, do: {hr, 84}
+      lock = for i <- 1..80, do: if(rem(i, 9) == 0, do: {84, 90}, else: {84, 83})
+      points = ride([{120, 84} | approach] ++ lock ++ [{130, 0}])
+
+      # The 80 s core, plus the approach sample within 8 bpm of cadence (92).
+      assert locked(points) in 80..90
+      refute HeartRate.cadence_lock?(hd(points))
+    end
+
+    test "coasting, short matches and unrelated HR are not a lock" do
+      coasting = for _ <- 1..120, do: {80, 0}
+      short = for _ <- 1..50, do: {85, 84}
+      unrelated = for _ <- 1..300, do: {150, 85}
+
+      assert locked(ride(coasting)) == 0
+      assert locked(ride(short ++ unrelated)) == 0
+      assert locked(ride(unrelated)) == 0
+      assert HeartRate.analyze(ride(unrelated)).summary["cadence_lock"]["samples"] == 0
+    end
+  end
 end

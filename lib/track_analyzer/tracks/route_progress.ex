@@ -569,7 +569,7 @@ defmodule TrackAnalyzer.Tracks.RouteProgress do
   end
 
   defp effort_trends(tracks) do
-    for {label, field} <- [{"100 m", :best_100m_speed_mps}, {"500 m", :best_500m_speed_mps}] do
+    for {label, field} <- [{"1 km", :best_1km_speed_mps}, {"5 km", :best_5km_speed_mps}] do
       values = tracks |> Enum.map(&Map.get(&1, field)) |> compact()
       recent = values |> Enum.take(-5) |> median()
       prior = values |> Enum.drop(-5) |> Enum.take(-5) |> median()

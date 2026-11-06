@@ -70,7 +70,7 @@ defmodule TrackAnalyzer.Tracks.FITTest do
   end
 
   @tag :tmp_dir
-  test "device speed corroborates or downgrades the GPS speed peak", %{tmp_dir: dir} do
+  test "a wheel sensor sets the peak, so a GPS spike cannot", %{tmp_dir: dir} do
     {:ok, parsed} = dir |> FITFixture.write!("ride.fit") |> FIT.parse_file()
 
     # Push one position forward so GPS sees a spike the wheel sensor did not.
@@ -80,12 +80,30 @@ defmodule TrackAnalyzer.Tracks.FITTest do
       end)
 
     result = Analyzer.analyze(%{parsed | points: spiked})
-    assert result.summary.max_speed_confidence == "low"
+    assert_in_delta result.summary.max_speed_mps, 6.12, 0.001
+    assert result.summary.max_speed_confidence == "high"
+    assert result.summary.stats["speed_source"] == "sensor"
+  end
 
-    assert Enum.any?(
-             result.summary.stats["max_speed_confidence_reasons"],
-             &(&1 =~ "device speed was 22.0 km/h")
-           )
+  @tag :tmp_dir
+  test "without a wheel sensor, a GPS peak the device speed does not confirm is ignored", %{
+    tmp_dir: dir
+  } do
+    {:ok, parsed} = dir |> FITFixture.write!("ride.fit") |> FIT.parse_file()
+
+    # A 70 km/h step: plausible for a bike, so GPS keeps the fix, but the one
+    # device reading left (at that fix) says 22 km/h.
+    points =
+      parsed.points
+      |> Enum.map(&%{&1 | sensor_speed_mps: nil, sensor_distance_m: nil})
+      |> List.update_at(60, fn point ->
+        %{point | latitude: point.latitude + 0.00014, sensor_speed_mps: 6.12}
+      end)
+
+    result = Analyzer.analyze(%{parsed | points: points})
+    assert result.summary.stats["speed_source"] == "gps"
+    assert result.summary.max_speed_point_position != 60
+    assert result.summary.max_speed_mps < 40 / 3.6
   end
 
   @example Path.expand("../../../priv/ride-0-2026-10-22-07-54-29.fit", __DIR__)

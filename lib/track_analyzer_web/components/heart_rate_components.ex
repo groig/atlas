@@ -36,6 +36,20 @@ defmodule TrackAnalyzerWeb.HeartRateComponents do
     """
   end
 
+  defp cadence_lock_detail(lock) do
+    ranges =
+      Enum.map_join(lock["segments"] || [], ", ", fn segment ->
+        "km #{km(segment["start_distance_m"])}–#{km(segment["end_distance_m"])} " <>
+          "(≈#{round(segment["average_bpm"] || 0)} bpm vs #{round(segment["average_rpm"] || 0)} rpm)"
+      end)
+
+    "The wrist sensor reported pedaling cadence as heart rate at #{ranges}. " <>
+      "Those readings are kept, but left out of averages, maximum and zones."
+  end
+
+  defp km(nil), do: "?"
+  defp km(meters), do: :erlang.float_to_binary(meters / 1_000, decimals: 1)
+
   attr :hr, :map, required: true
   attr :quality, :map, required: true
   attr :series, :string, required: true
@@ -55,6 +69,15 @@ defmodule TrackAnalyzerWeb.HeartRateComponents do
             <h2 class="mt-1 text-2xl font-black">Heart rate</h2>
             <p class="mt-2 text-sm text-[var(--ink-muted)]">
               {duration(@hr["covered_s"])} recorded · {percent(@hr["coverage_percent"])} time coverage
+            </p>
+            <p
+              :if={(get_in(@hr, ["cadence_lock", "samples"]) || 0) > 0}
+              id="track-hr-cadence-lock"
+              title={cadence_lock_detail(@hr["cadence_lock"])}
+              class="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] font-semibold text-[var(--ink-muted)]"
+            >
+              <.icon name="hero-arrow-path" class="size-3.5" />
+              Cadence lock · {duration(@hr["cadence_lock"]["seconds"])} excluded
             </p>
           </div>
           <.link

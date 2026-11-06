@@ -10,7 +10,7 @@ defmodule TrackAnalyzerWeb.SpeedLive do
     {:ok,
      socket
      |> assign(:page_title, "Speed history")
-     |> assign(:filters, %{"metric" => "100m", "range" => "all"})
+     |> assign(:filters, %{"metric" => "1km", "range" => "all"})
      |> load_speed()}
   end
 
@@ -59,8 +59,8 @@ defmodule TrackAnalyzerWeb.SpeedLive do
   defp trend_note(_value), do: "last 15 vs prior 15"
 
   defp metric_label("instantaneous"), do: "Instant peak"
-  defp metric_label("500m"), do: "Best 500 m"
-  defp metric_label(_metric), do: "Best 100 m"
+  defp metric_label("5km"), do: "Best 5 km"
+  defp metric_label(_metric), do: "Best 1 km"
 
   defp confidence_classes("high"), do: "bg-emerald-400/15 text-emerald-700 dark:text-emerald-300"
   defp confidence_classes("medium"), do: "bg-amber-400/15 text-amber-800 dark:text-amber-300"
@@ -80,7 +80,7 @@ defmodule TrackAnalyzerWeb.SpeedLive do
             <div class="max-w-3xl">
               <h1 class="text-3xl font-black tracking-[-0.045em] sm:text-4xl">Speed history</h1>
               <p class="mt-2 max-w-2xl text-sm leading-6 text-white/58">
-                Instantaneous peaks, sustained 100 m and 500 m efforts, rolling median, and record progression.
+                Instantaneous peaks, sustained 1 km and 5 km efforts, rolling median, and record progression.
               </p>
             </div>
             <div class="rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-right">
@@ -92,13 +92,13 @@ defmodule TrackAnalyzerWeb.SpeedLive do
 
         <section id="speed-records" class="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <.record_card
-            id="record-100m"
-            label="100 m record"
-            value={speed(@history.records.best_100m && @history.records.best_100m.speed_mps)}
-            note={record_note(@history.records.best_100m)}
+            id="record-1km"
+            label="1 km record"
+            value={speed(@history.records.best_1km && @history.records.best_1km.speed_mps)}
+            note={record_note(@history.records.best_1km)}
             icon="hero-rocket-launch"
             accent={true}
-            record={@history.records.best_100m}
+            record={@history.records.best_1km}
           />
           <.record_card
             id="record-instantaneous"
@@ -109,12 +109,12 @@ defmodule TrackAnalyzerWeb.SpeedLive do
             record={@history.records.instantaneous}
           />
           <.record_card
-            id="record-500m"
-            label="500 m record"
-            value={speed(@history.records.best_500m && @history.records.best_500m.speed_mps)}
-            note={record_note(@history.records.best_500m)}
+            id="record-5km"
+            label="5 km record"
+            value={speed(@history.records.best_5km && @history.records.best_5km.speed_mps)}
+            note={record_note(@history.records.best_5km)}
             icon="hero-forward"
-            record={@history.records.best_500m}
+            record={@history.records.best_5km}
           />
           <.record_card
             id="speed-trend"
@@ -144,8 +144,8 @@ defmodule TrackAnalyzerWeb.SpeedLive do
                 type="select"
                 label="Measure"
                 options={[
-                  {"100 m sustained", "100m"},
-                  {"500 m sustained", "500m"},
+                  {"1 km sustained", "1km"},
+                  {"5 km sustained", "5km"},
                   {"Instant peak", "instantaneous"}
                 ]}
               />
@@ -248,8 +248,8 @@ defmodule TrackAnalyzerWeb.SpeedLive do
   end
 
   defp leader_speed(track, "instantaneous"), do: speed(track.max_speed_mps)
-  defp leader_speed(track, "500m"), do: speed(track.best_500m_speed_mps)
-  defp leader_speed(track, _metric), do: speed(track.best_100m_speed_mps)
+  defp leader_speed(track, "5km"), do: speed(track.best_5km_speed_mps)
+  defp leader_speed(track, _metric), do: speed(track.best_1km_speed_mps)
 
   attr :id, :string, required: true
   attr :label, :string, required: true

@@ -26,8 +26,8 @@ defmodule TrackAnalyzer.Tracks.Track do
     field :stopped_s, :float
     field :avg_speed_mps, :float
     field :max_speed_mps, :float
-    field :best_100m_speed_mps, :float
-    field :best_500m_speed_mps, :float
+    field :best_1km_speed_mps, :float
+    field :best_5km_speed_mps, :float
     field :max_speed_confidence, :string
     field :max_speed_point_position, :integer
     field :elevation_gain_m, :float
@@ -78,8 +78,8 @@ defmodule TrackAnalyzer.Tracks.Track do
       :stopped_s,
       :avg_speed_mps,
       :max_speed_mps,
-      :best_100m_speed_mps,
-      :best_500m_speed_mps,
+      :best_1km_speed_mps,
+      :best_5km_speed_mps,
       :max_speed_confidence,
       :max_speed_point_position,
       :elevation_gain_m,

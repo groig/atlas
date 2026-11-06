@@ -73,6 +73,8 @@ const periodFilename = (period, bounds, now = new Date()) => {
 const localDateKey = date => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-")
 const monthKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
 
+// Monthly bars whenever they fit (a year, or an all-time span of up to two
+// years); days for a week or a month; years only for long histories.
 const recapRhythm = (period, activity, bounds) => {
   const rows = activity.map(row => ({...row, date: new Date(row.started_at)})).filter(row => !Number.isNaN(row.date.getTime()))
   let buckets = []
@@ -95,10 +97,25 @@ const recapRhythm = (period, activity, bounds) => {
       const date = new Date(bounds.from.getFullYear(), index, 1)
       return {key: monthKey(date), label: date.toLocaleDateString(undefined, {month: "narrow"}), showLabel: true}
     })
-  } else {
-    keyFor = date => String(date.getFullYear())
-    const years = [...new Set(rows.map(row => row.date.getFullYear()))].sort((left, right) => left - right)
-    buckets = years.map(year => ({key: String(year), label: String(year), showLabel: true}))
+  } else if(rows.length > 0) {
+    const times = rows.map(row => row.date.getTime())
+    const first = new Date(Math.min(...times))
+    const last = new Date(Math.max(...times))
+    const months = (last.getFullYear() - first.getFullYear()) * 12 + last.getMonth() - first.getMonth() + 1
+
+    if(months <= 24) {
+      keyFor = monthKey
+      buckets = Array.from({length: months}, (_, index) => {
+        const date = new Date(first.getFullYear(), first.getMonth() + index, 1)
+        return {key: monthKey(date), label: date.toLocaleDateString(undefined, {month: months > 12 ? "narrow" : "short"}), showLabel: true}
+      })
+    } else {
+      keyFor = date => String(date.getFullYear())
+      buckets = Array.from({length: last.getFullYear() - first.getFullYear() + 1}, (_, index) => {
+        const year = String(first.getFullYear() + index)
+        return {key: year, label: year, showLabel: true}
+      })
+    }
   }
 
   const totals = rows.reduce((result, row) => {
@@ -110,37 +127,34 @@ const recapRhythm = (period, activity, bounds) => {
   return buckets.map(bucket => ({...bucket, distanceM: totals[bucket.key] || 0}))
 }
 
-const activeDayCount = activity => new Set(
-  activity
-    .map(row => new Date(row.started_at))
-    .filter(date => !Number.isNaN(date.getTime()))
-    .map(localDateKey)
-).size
+// Values are drawn as runs of [text, unit?]: numbers large, units smaller and muted.
+const NONE = [["—"]]
+const finite = value => value !== null && value !== undefined && Number.isFinite(Number(value))
+const grouped = (value, digits = 0) => Number(value).toLocaleString("en-US", {minimumFractionDigits: digits, maximumFractionDigits: digits})
 
-const distance = meters => {
-  if(!Number.isFinite(Number(meters))) return "—"
+const distanceParts = meters => {
+  if(!finite(meters)) return NONE
   const km = meters / 1_000
-  if(km >= 99.95) return `${Math.round(km).toLocaleString("en-US")} km`
-  if(km >= 1) return `${km.toFixed(1)} km`
-  return `${Math.round(meters)} m`
+  if(km >= 99.95) return [[grouped(km)], [" km", true]]
+  if(km >= 1) return [[km.toFixed(1)], [" km", true]]
+  return [[String(Math.round(meters))], [" m", true]]
 }
 
-const elevation = meters => {
-  if(!Number.isFinite(Number(meters))) return "—"
-  if(meters >= 10_000) return `${(meters / 1_000).toLocaleString("en-US", {maximumFractionDigits: 1})} km`
-  return `${Math.round(meters).toLocaleString()} m`
-}
+const elevationParts = meters => finite(meters) ? [[grouped(meters)], [" m", true]] : NONE
+const countParts = value => finite(value) ? [[grouped(value)]] : NONE
 
-const speed = metersPerSecond => Number.isFinite(Number(metersPerSecond)) ? `${(metersPerSecond * 3.6).toFixed(1)} km/h` : "—"
-
-const duration = seconds => {
-  if(!Number.isFinite(Number(seconds))) return "—"
+const durationParts = seconds => {
+  if(!finite(seconds)) return NONE
   const totalMinutes = Math.max(Math.round(seconds / 60), 0)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
-  if(hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`
-  return `${minutes}m`
+  if(hours === 0) return [[String(minutes)], [" min", true]]
+  // Past ten hours, minutes are noise on a story card.
+  if(hours >= 10) return [[grouped(Math.round(totalMinutes / 60))], [" h", true]]
+  return [[grouped(hours)], ["h ", true], [String(minutes).padStart(2, "0")], ["m", true]]
 }
+
+const plain = parts => parts.map(([text]) => text).join("")
 
 const roundedRect = (context, x, y, width, height, radius) => {
   const r = Math.min(radius, width / 2, height / 2)
@@ -163,200 +177,135 @@ const font = (context, weight, size) => {
   context.font = `${weight} ${size}px ${FONT}`
 }
 
-const fitText = (context, text, maximumWidth, weight, maximumSize, minimumSize = 32) => {
-  let size = maximumSize
-  font(context, weight, size)
-  while(size > minimumSize && context.measureText(text).width > maximumWidth) {
-    size -= 2
-    font(context, weight, size)
-  }
-  return size
+const label = (context, text, x, y, color = palette.muted, size = 28) => {
+  font(context, 700, size)
+  context.fillStyle = color
+  if("letterSpacing" in context) context.letterSpacing = `${Math.round(size * 0.12)}px`
+  context.fillText(text.toUpperCase(), x, y)
+  if("letterSpacing" in context) context.letterSpacing = "0px"
 }
 
-const label = (context, text, x, y, color = palette.muted, size = 24) => {
-  font(context, 800, size)
-  context.fillStyle = color
-  context.fillText(text.toUpperCase(), x, y)
+const UNIT_SCALE = 0.42
+
+const measureParts = (context, parts, size) => parts.reduce((width, [text, unit]) => {
+  font(context, unit ? 700 : 900, unit ? Math.round(size * UNIT_SCALE) : size)
+  return width + context.measureText(text).width
+}, 0)
+
+const fittedSize = (context, parts, size, maximumWidth) => {
+  let fitted = size
+  while(fitted > 32 && measureParts(context, parts, fitted) > maximumWidth) fitted -= 2
+  return fitted
 }
+
+// Draws a value on one baseline, shrinking it until it fits the given width.
+const drawValue = (context, parts, x, y, size, maximumWidth, color = palette.ink) => {
+  const fitted = fittedSize(context, parts, size, maximumWidth)
+
+  let cursor = x
+  parts.forEach(([text, unit]) => {
+    font(context, unit ? 700 : 900, unit ? Math.round(fitted * UNIT_SCALE) : fitted)
+    context.fillStyle = unit ? palette.muted : color
+    context.fillText(text, cursor, y)
+    cursor += context.measureText(text).width
+  })
+  return fitted
+}
+
+const MARGIN = 88
+const CONTENT = WIDTH - MARGIN * 2
 
 const drawBrand = context => {
-  fillRoundRect(context, 72, 70, 74, 74, 22, palette.accent)
+  fillRoundRect(context, MARGIN, 92, 56, 56, 16, palette.accent)
   context.strokeStyle = palette.accentInk
-  context.lineWidth = 5
+  context.lineWidth = 4
   context.lineJoin = "round"
   context.beginPath()
-  context.moveTo(94, 96)
-  context.lineTo(107, 90)
-  context.lineTo(122, 98)
-  context.lineTo(122, 122)
-  context.lineTo(108, 114)
-  context.lineTo(94, 121)
+  context.moveTo(MARGIN + 16, 112)
+  context.lineTo(MARGIN + 26, 107)
+  context.lineTo(MARGIN + 39, 113)
+  context.lineTo(MARGIN + 39, 133)
+  context.lineTo(MARGIN + 27, 127)
+  context.lineTo(MARGIN + 16, 133)
   context.closePath()
   context.stroke()
 
-  font(context, 900, 34)
+  font(context, 800, 32)
   context.fillStyle = palette.ink
-  context.fillText("Track / Atlas", 170, 118)
+  context.fillText("Track / Atlas", MARGIN + 78, 131)
 }
 
 const drawBackground = context => {
   context.fillStyle = palette.canvas
   context.fillRect(0, 0, WIDTH, HEIGHT)
 
-  const glow = context.createRadialGradient(880, 90, 0, 880, 90, 620)
-  glow.addColorStop(0, "rgba(216, 255, 69, 0.18)")
+  const glow = context.createRadialGradient(860, 360, 0, 860, 360, 760)
+  glow.addColorStop(0, "rgba(216, 255, 69, 0.13)")
   glow.addColorStop(1, "rgba(216, 255, 69, 0)")
   context.fillStyle = glow
-  context.fillRect(0, 0, WIDTH, 760)
+  context.fillRect(0, 0, WIDTH, 1100)
 
-  context.strokeStyle = "rgba(219, 241, 226, 0.055)"
+  // Faint contour lines, a nod to the map without showing any route.
+  context.strokeStyle = "rgba(54, 227, 205, 0.07)"
   context.lineWidth = 2
-  for(let offset = -HEIGHT; offset < WIDTH; offset += 72) {
+  for(let index = 0; index < 5; index += 1) {
     context.beginPath()
-    context.moveTo(offset, 0)
-    context.lineTo(offset + HEIGHT, HEIGHT)
-    context.stroke()
-  }
-
-  context.strokeStyle = "rgba(54, 227, 205, 0.10)"
-  for(let index = 0; index < 4; index += 1) {
-    context.beginPath()
-    context.ellipse(940, 420, 210 + index * 55, 330 + index * 65, -0.35, 0, Math.PI * 2)
+    context.ellipse(930, 380, 170 + index * 70, 260 + index * 80, -0.35, 0, Math.PI * 2)
     context.stroke()
   }
 }
 
-const drawMetricCard = (context, x, y, width, height, title, value, accent) => {
-  fillRoundRect(context, x, y, width, height, 30, palette.surface)
-  context.fillStyle = accent
-  context.fillRect(x, y, 8, height)
-  label(context, title, x + 30, y + 76, palette.muted, 20)
-  fitText(context, value, width - 60, 900, 48, 30)
-  context.fillStyle = palette.ink
-  context.fillText(value, x + 30, y + 151)
+const drawStat = (context, title, parts, x, y, width, size = 92) => {
+  label(context, title, x, y, palette.muted, 26)
+  drawValue(context, parts, x, y + size + 18, size, width)
 }
 
-const drawSpeedLedger = (context, summary) => {
-  const x = 72
-  const y = 835
-  const width = 936
-  const height = 286
-  fillRoundRect(context, x, y, width, height, 38, palette.surface)
-  label(context, "Speed ledger", x + 36, y + 52, palette.orange, 22)
+const drawRhythm = (context, rhythm, top, height) => {
+  const plotX = MARGIN
+  const plotWidth = CONTENT
+  const labelSpace = 54
+  const valueSpace = 64
+  const plotY = top + valueSpace
+  const plotHeight = height - labelSpace - valueSpace
+  if(rhythm.length === 0) return
 
-  const values = [
-    ["Moving avg", speed(summary.avg_speed_mps)],
-    [`Instant max · ${summary.max_speed_confidence || "unrated"}`, speed(summary.max_speed_mps)],
-    ["Best 100 m", speed(summary.best_100m_speed_mps)],
-    ["Best 500 m", speed(summary.best_500m_speed_mps)],
-  ]
-  const columnWidth = (width - 72) / values.length
-
-  values.forEach(([title, value], index) => {
-    const columnX = x + 36 + index * columnWidth
-    if(index > 0) {
-      context.fillStyle = palette.line
-      context.fillRect(columnX - 18, y + 93, 2, 130)
-    }
-    label(context, title, columnX, y + 122, palette.muted, 16)
-    fitText(context, value, columnWidth - 32, 900, 34, 23)
-    context.fillStyle = palette.ink
-    context.fillText(value, columnX, y + 179)
-  })
-}
-
-const drawRhythm = (context, rhythm, activeDays, period) => {
-  const x = 72
-  const y = 1150
-  const width = 936
-  const height = 330
-  fillRoundRect(context, x, y, width, height, 38, palette.surfaceStrong)
-  label(context, "Activity rhythm", x + 36, y + 52, palette.cyan, 22)
-  font(context, 650, 18)
-  context.fillStyle = palette.muted
-  context.fillText(period === "all" ? "Distance by year" : period === "year" ? "Distance by month" : "Distance by day", x + 36, y + 88)
-  font(context, 900, 44)
-  context.fillStyle = palette.ink
-  context.fillText(String(activeDays), x + width - 190, y + 62)
-  font(context, 700, 17)
-  context.fillStyle = palette.muted
-  context.fillText(activeDays === 1 ? "ACTIVE DAY" : "ACTIVE DAYS", x + width - 190, y + 92)
-
-  const plotX = x + 36
-  const plotY = y + 126
-  const plotWidth = width - 72
-  const plotHeight = 135
   const maximum = Math.max(...rhythm.map(bucket => bucket.distanceM), 1)
-  const gap = rhythm.length > 20 ? 5 : 10
-  const barWidth = Math.max((plotWidth - gap * Math.max(rhythm.length - 1, 0)) / Math.max(rhythm.length, 1), 4)
-
-  if(rhythm.length === 0) {
-    font(context, 650, 24)
-    context.fillStyle = palette.muted
-    context.fillText("Dated tracks will build your rhythm.", plotX, plotY + 70)
-  }
+  const best = rhythm.reduce((winner, bucket, index) => bucket.distanceM > rhythm[winner].distanceM ? index : winner, 0)
+  const gap = rhythm.length > 16 ? 6 : 14
+  const barWidth = Math.max((plotWidth - gap * (rhythm.length - 1)) / rhythm.length, 4)
 
   rhythm.forEach((bucket, index) => {
-    const height = Math.max(bucket.distanceM / maximum * plotHeight, bucket.distanceM > 0 ? 8 : 2)
+    const isBest = index === best && bucket.distanceM > 0
+    const barHeight = bucket.distanceM > 0 ? Math.max(bucket.distanceM / maximum * plotHeight, 10) : 4
     const barX = plotX + index * (barWidth + gap)
-    fillRoundRect(context, barX, plotY + plotHeight - height, barWidth, height, Math.min(9, barWidth / 2), bucket.distanceM > 0 ? palette.cyan : "rgba(147, 165, 154, 0.18)")
+    const fill = isBest ? palette.accent : bucket.distanceM > 0 ? "rgba(54, 227, 205, 0.45)" : "rgba(147, 165, 154, 0.16)"
+    fillRoundRect(context, barX, plotY + plotHeight - barHeight, barWidth, barHeight, Math.min(10, barWidth / 2), fill)
+
+    if(isBest) {
+      const text = plain(distanceParts(bucket.distanceM))
+      font(context, 800, 30)
+      context.fillStyle = palette.accent
+      const textWidth = context.measureText(text).width
+      const centered = barX + barWidth / 2 - textWidth / 2
+      context.fillText(text, Math.min(Math.max(centered, plotX), plotX + plotWidth - textWidth), plotY + plotHeight - barHeight - 20)
+    }
+
     if(bucket.showLabel) {
-      font(context, 700, rhythm.length > 16 ? 13 : 16)
-      context.fillStyle = palette.muted
+      font(context, isBest ? 800 : 600, rhythm.length > 16 ? 20 : 24)
+      context.fillStyle = isBest ? palette.ink : palette.muted
       context.textAlign = "center"
-      context.fillText(bucket.label, barX + barWidth / 2, plotY + plotHeight + 34)
+      context.fillText(bucket.label, barX + barWidth / 2, plotY + plotHeight + 42)
       context.textAlign = "left"
     }
   })
-
 }
 
-const drawHighlights = (context, summary) => {
-  const x = 72
-  const y = 1510
-  const width = 936
-  const height = 228
-  label(context, "Period highlights", x, y + 26, palette.accent, 22)
-  const rows = [
-    ["Longest outing", distance(summary.longest_distance_m)],
-    ["Biggest climb", elevation(summary.highest_elevation_gain_m)],
-    ["Longest moving", duration(summary.longest_moving_s)],
-  ]
-  const columnWidth = width / rows.length
-
-  rows.forEach(([title, value], index) => {
-    const columnX = x + index * columnWidth
-    fillRoundRect(context, columnX, y + 55, columnWidth - 16, height - 55, 30, palette.surface)
-    label(context, title, columnX + 26, y + 101, palette.muted, 17)
-    fitText(context, value, columnWidth - 68, 900, 39, 25)
-    context.fillStyle = palette.ink
-    context.fillText(value, columnX + 26, y + 158)
-  })
-}
-
-const drawEmpty = (context, period) => {
-  label(context, "Your movement, in numbers", 72, 302, palette.accent, 24)
-  fitText(context, "NO TRACKS IN THIS PERIOD", 900, 900, 92, 56)
-  context.fillStyle = palette.ink
-  context.fillText("NO TRACKS IN THIS PERIOD", 72, 430)
-  font(context, 600, 34)
+const drawEmpty = context => {
+  label(context, "Distance", MARGIN, 330)
+  drawValue(context, [["0"], [" km", true]], MARGIN, 600, 260, CONTENT)
+  font(context, 600, 40)
   context.fillStyle = palette.muted
-  context.fillText("Choose another period after more tracks are analyzed.", 72, 500)
-  fillRoundRect(context, 72, 610, 936, 760, 52, palette.surface)
-  context.strokeStyle = palette.line
-  context.lineWidth = 4
-  context.setLineDash([14, 18])
-  roundedRect(context, 132, 670, 816, 640, 42)
-  context.stroke()
-  context.setLineDash([])
-  font(context, 900, 220)
-  context.textAlign = "center"
-  context.fillStyle = palette.accent
-  context.fillText("0", WIDTH / 2, 1040)
-  font(context, 800, 28)
-  context.fillStyle = palette.muted
-  context.fillText(period === "all" ? "ANALYZED TRACKS" : "TRACKS IN THIS CALENDAR PERIOD", WIDTH / 2, 1100)
-  context.textAlign = "left"
+  context.fillText("No rides in this period yet.", MARGIN, 720)
 }
 
 const renderRecap = (canvas, summary, period, bounds, now = new Date()) => {
@@ -367,37 +316,36 @@ const renderRecap = (canvas, summary, period, bounds, now = new Date()) => {
   drawBrand(context)
 
   const periodText = periodLabel(period, bounds, now)
-  fitText(context, periodText, 430, 800, 22, 17)
-  context.fillStyle = palette.muted
   context.textAlign = "right"
-  context.fillText(periodText, WIDTH - 72, 116)
+  label(context, periodText, WIDTH - MARGIN, 131, palette.muted, period === "week" ? 20 : 24)
   context.textAlign = "left"
 
   if(summary.track_count === 0) {
-    drawEmpty(context, period)
+    drawEmpty(context)
   } else {
     const activity = summary.activity || []
-    const rhythm = recapRhythm(period, activity, bounds)
-    const activeDays = activeDayCount(activity)
 
-    label(context, "Your movement, in numbers", 72, 250, palette.accent, 24)
-    const hero = distance(summary.distance_m)
-    fitText(context, hero, 936, 900, 128, 72)
-    context.fillStyle = palette.ink
-    context.fillText(hero, 72, 390)
-    font(context, 650, 29)
-    context.fillStyle = palette.muted
-    context.fillText("DISTANCE EXPLORED", 76, 442)
+    // Hero: the one number that matters most.
+    label(context, "Distance", MARGIN, 340, palette.accent, 28)
+    drawValue(context, distanceParts(summary.distance_m), MARGIN, 600, 250, CONTENT)
 
-    drawMetricCard(context, 72, 520, 296, 230, "Tracks", Number(summary.track_count).toLocaleString(), palette.accent)
-    drawMetricCard(context, 392, 520, 296, 230, "Moving", duration(summary.moving_s), palette.cyan)
-    drawMetricCard(context, 712, 520, 296, 230, "Elevation", elevation(summary.elevation_gain_m), palette.orange)
-    drawSpeedLedger(context, summary)
-    drawRhythm(context, rhythm, activeDays, period)
-    drawHighlights(context, summary)
+    const stats = [
+      ["Moving time", durationParts(summary.moving_s)],
+      ["Elevation", elevationParts(summary.elevation_gain_m)],
+      ["Rides", countParts(summary.track_count)],
+    ]
+    // One shared size, so the row reads as a set rather than three sizes.
+    const column = CONTENT / stats.length
+    const size = Math.min(...stats.map(([, parts]) => fittedSize(context, parts, 92, column - 36)))
+    stats.forEach(([title, parts], index) => {
+      drawStat(context, title, parts, MARGIN + index * column, 812, column - 36, size)
+    })
+
+    // Header, hero, stats and chart sit about 175 px apart, bottom margin included.
+    drawRhythm(context, recapRhythm(period, activity, bounds), 1076, 680)
   }
 
-  canvas.setAttribute("aria-label", `${periodText}. ${summary.track_count} analyzed tracks, ${distance(summary.distance_m)} explored.`)
+  canvas.setAttribute("aria-label", `${periodText}. ${summary.track_count} rides, ${plain(distanceParts(summary.distance_m))}.`)
 }
 
 const canvasBlob = canvas => new Promise((resolve, reject) => {

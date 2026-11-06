@@ -16,32 +16,32 @@ defmodule TrackAnalyzerWeb.NavigationTest do
   end
 
   test "overview links each record and latest analysis to its source track", %{conn: conn} do
-    record_100m =
+    record_1km =
       insert_track!(0, %{
-        best_100m_speed_mps: 16.0,
-        best_500m_speed_mps: 7.0,
+        best_1km_speed_mps: 16.0,
+        best_5km_speed_mps: 7.0,
         max_speed_mps: 12.0
       })
 
     instantaneous =
       insert_track!(1, %{
-        best_100m_speed_mps: 8.0,
-        best_500m_speed_mps: 6.0,
+        best_1km_speed_mps: 8.0,
+        best_5km_speed_mps: 6.0,
         max_speed_mps: 20.0
       })
 
-    record_500m =
+    record_5km =
       insert_track!(2, %{
-        best_100m_speed_mps: 9.0,
-        best_500m_speed_mps: 14.0,
+        best_1km_speed_mps: 9.0,
+        best_5km_speed_mps: 14.0,
         max_speed_mps: 13.0
       })
 
     {:ok, view, _html} = live(conn, ~p"/")
 
-    assert has_element?(view, "#latest-analyzed-track[href='/tracks/#{record_500m.id}']")
-    assert has_element?(view, "#dashboard-record-100m[href='/tracks/#{record_100m.id}']")
-    assert has_element?(view, "#dashboard-record-500m[href='/tracks/#{record_500m.id}']")
+    assert has_element?(view, "#latest-analyzed-track[href='/tracks/#{record_5km.id}']")
+    assert has_element?(view, "#dashboard-record-1km[href='/tracks/#{record_1km.id}']")
+    assert has_element?(view, "#dashboard-record-5km[href='/tracks/#{record_5km.id}']")
 
     assert has_element?(
              view,
@@ -132,32 +132,32 @@ defmodule TrackAnalyzerWeb.NavigationTest do
   test "speed record cards link to their source tracks while the trend stays static", %{
     conn: conn
   } do
-    record_100m =
+    record_1km =
       insert_track!(0, %{
-        best_100m_speed_mps: 16.0,
-        best_500m_speed_mps: 7.0,
+        best_1km_speed_mps: 16.0,
+        best_5km_speed_mps: 7.0,
         max_speed_mps: 12.0
       })
 
     instantaneous =
       insert_track!(1, %{
-        best_100m_speed_mps: 8.0,
-        best_500m_speed_mps: 6.0,
+        best_1km_speed_mps: 8.0,
+        best_5km_speed_mps: 6.0,
         max_speed_mps: 20.0
       })
 
-    record_500m =
+    record_5km =
       insert_track!(2, %{
-        best_100m_speed_mps: 9.0,
-        best_500m_speed_mps: 14.0,
+        best_1km_speed_mps: 9.0,
+        best_5km_speed_mps: 14.0,
         max_speed_mps: 13.0
       })
 
     {:ok, view, _html} = live(conn, ~p"/speed")
 
-    assert has_element?(view, "#record-100m[href='/tracks/#{record_100m.id}']")
+    assert has_element?(view, "#record-1km[href='/tracks/#{record_1km.id}']")
     assert has_element?(view, "#record-instantaneous[href='/tracks/#{instantaneous.id}']")
-    assert has_element?(view, "#record-500m[href='/tracks/#{record_500m.id}']")
+    assert has_element?(view, "#record-5km[href='/tracks/#{record_5km.id}']")
     assert has_element?(view, "article#speed-trend")
     refute has_element?(view, "#speed-trend[href]")
   end
@@ -199,8 +199,8 @@ defmodule TrackAnalyzerWeb.NavigationTest do
       ended_at: DateTime.add(~U[2025-01-01 09:00:00Z], index, :day),
       point_count: 10,
       max_speed_mps: 10.0,
-      best_100m_speed_mps: 8.0,
-      best_500m_speed_mps: 6.0,
+      best_1km_speed_mps: 8.0,
+      best_5km_speed_mps: 6.0,
       max_speed_confidence: "high"
     }
 

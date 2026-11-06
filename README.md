@@ -28,18 +28,19 @@ Track / Atlas is a self-hosted application for turning an OsmAnd track library i
 ## What you can explore
 
 - Distance, elapsed/moving/stopped time, average speed, and confidence-rated maximum speed
-- Best sustained 100 m and 500 m speeds, personal records, and track-linked leaderboards
+- Best sustained 1 km and 5 km speeds, personal records, and track-linked leaderboards
 - Speed history with every-track scatter, rolling medians, cumulative records, and time filters
 - Automatic matching of repeated routes, with faster/slower/steady signals that account for normal variation
 - Route-specific speed history, latest-versus-prior comparisons, and synchronized 10-sector map analysis
-- Twelve-week training volume, weekly streaks, and recent 100 m and 500 m effort trends
+- Twelve-week training volume, weekly streaks, and recent 1 km and 5 km effort trends
 - Cadence and speed-sensor analysis: pedaling vs coasting, cadence by terrain, a gearing fingerprint, and device-vs-GPS distance with a wheel-calibration hint
+- Detection of wrist sensors locking onto pedaling cadence: those readings are kept but left out of HR averages, maximum and zones
 - Heart-rate timelines synchronized with the route map, interval selection, time distributions, and sustained 1/5/10/20-minute averages
 - Same-route speed-versus-HR comparisons, cautious longer-term effort signals, and optional intensity bands with recorded-load history
 - Elevation gain/loss, elevation range, sustained climbs, stopped periods, and kilometer splits
-- Best 100 m, 500 m, 1 km, 5 km, 10 km, 20 km, and 40 km efforts
+- Best 1 km, 5 km, 10 km, 20 km, and 40 km efforts
 - Route shape, displacement, sinuosity, loop resemblance, sample cadence, and dominant bearing
-- GPS quality checks for implausible spikes, missing observations, invalid coordinates, and high HDOP
+- GPS quality checks for implausible spikes (over 80 km/h between fixes), pre-fix positions at the start of a recording, missing observations, invalid coordinates, and high HDOP. When a bike computer records a wheel sensor, its speed and odometer are used for distance, top speed and efforts instead of GPS
 - Portfolio totals, monthly rhythm, coverage heatmaps, longest tracks, and four-track comparisons
 - Story-sized PNG recaps for all time, the current year, month, or week
 
@@ -52,6 +53,8 @@ Progress signals are deliberately factual rather than diagnostic. They describe 
 - **OsmAnd `.osf` exports**, which keep folder structure and are the best way to move a whole library.
 - **Single `.gpx` tracks** from OsmAnd or any GPX 1.1 recorder. Garmin `TrackPointExtension` heart rate and cadence are read.
 - **`.fit` activities** from bike computers, watches and phone apps, including cadence, device speed and distance, and heart rate.
+
+Near-empty recordings (fewer than 10 points, under 200 m, or under a minute of movement) are kept but skipped: they do not count in totals, records or recaps, and the import log lists them with the reason.
 
 The same file is stored once, however many times or batches it is uploaded in. A GPX and a FIT recording of the same ride are different files, so both are kept; they show up as two attempts of the same route.
 

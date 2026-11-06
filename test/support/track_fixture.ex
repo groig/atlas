@@ -7,12 +7,23 @@ defmodule TrackAnalyzer.TrackFixture do
     <gpx version="1.1" creator="OsmAnd test" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net">
       <metadata><name>Morning Loop</name><extensions><osmand:activity>cycling</osmand:activity></extensions></metadata>
       <trk><name>Morning Loop</name><trkseg>
-        <trkpt lat="55.676100" lon="12.568300"><ele>12.0</ele><time>2025-01-15T08:00:00Z</time><hdop>2.0</hdop><extensions><osmand:speed>4.0</osmand:speed></extensions></trkpt>
-        <trkpt lat="55.677100" lon="12.569300"><ele>18.0</ele><time>2025-01-15T08:00:30Z</time><hdop>2.5</hdop><extensions><osmand:speed>5.0</osmand:speed></extensions></trkpt>
-        <trkpt lat="55.678100" lon="12.570300"><ele>16.0</ele><time>2025-01-15T08:01:00Z</time><hdop>3.0</hdop><extensions><osmand:speed>4.5</osmand:speed></extensions></trkpt>
+    #{points()}
       </trkseg></trk>
     </gpx>
     """
+  end
+
+  # Twelve fixes 30 s apart, about 128 m each: long enough not to be skipped.
+  defp points do
+    for index <- 0..11 do
+      elevation = Enum.at([12.0, 18.0], index, 16.0)
+      time = DateTime.add(~U[2025-01-15 08:00:00Z], index * 30) |> DateTime.to_iso8601()
+      hdop = Enum.at([2.0, 2.5], index, 3.0)
+      speed = Enum.at([4.0, 5.0], index, 4.5)
+
+      ~s(<trkpt lat="#{:erlang.float_to_binary(55.6761 + index * 0.001, decimals: 6)}" lon="#{:erlang.float_to_binary(12.5683 + index * 0.001, decimals: 6)}"><ele>#{elevation}</ele><time>#{time}</time><hdop>#{hdop}</hdop><extensions><osmand:speed>#{speed}</osmand:speed></extensions></trkpt>)
+    end
+    |> Enum.join("\n")
   end
 
   def write_gpx!(directory) do
@@ -29,8 +40,8 @@ defmodule TrackAnalyzer.TrackFixture do
           "type" => "GPX",
           "subtype" => "gpx",
           "file" => "/tracks/rec/morning_loop.gpx",
-          "total_distance" => 300.0,
-          "time_span" => 60_000
+          "total_distance" => 1_400.0,
+          "time_span" => 330_000
         }
       ]
     }

@@ -120,7 +120,7 @@ defmodule TrackAnalyzer.Tracks do
   end
 
   def speed_history(filters \\ %{}) do
-    metric = speed_metric(Map.get(filters, "metric", "100m"))
+    metric = speed_metric(Map.get(filters, "metric", "1km"))
     range = speed_range(Map.get(filters, "range", "all"))
 
     all_tracks =
@@ -138,8 +138,8 @@ defmodule TrackAnalyzer.Tracks do
       points: history,
       records: %{
         instantaneous: speed_record(all_tracks, :max_speed_mps),
-        best_100m: speed_record(all_tracks, :best_100m_speed_mps),
-        best_500m: speed_record(all_tracks, :best_500m_speed_mps)
+        best_1km: speed_record(all_tracks, :best_1km_speed_mps),
+        best_5km: speed_record(all_tracks, :best_5km_speed_mps)
       },
       leaders: speed_leaders(visible_tracks, metric),
       recent_delta_percent: recent_speed_delta(history)
@@ -199,11 +199,12 @@ defmodule TrackAnalyzer.Tracks do
         )
 
       summary = put_in(result.summary, [:stats, "heart_rate"], hr)
-      status = if summary.point_count < 2, do: "insufficient_data", else: "complete"
+      skip_reason = summary[:skip_reason]
+      status = if skip_reason, do: "insufficient_data", else: "complete"
 
       attrs = %{
         status: status,
-        stage: if(status == "complete", do: "Ready to explore", else: "Not enough track points"),
+        stage: if(skip_reason, do: "Skipped: #{skip_reason}", else: "Ready to explore"),
         progress: 100,
         analysis_version: Analyzer.analysis_version(),
         name: summary.name || track.name,
@@ -220,8 +221,8 @@ defmodule TrackAnalyzer.Tracks do
         stopped_s: summary.stopped_s,
         avg_speed_mps: summary.avg_speed_mps,
         max_speed_mps: summary.max_speed_mps,
-        best_100m_speed_mps: summary.best_100m_speed_mps,
-        best_500m_speed_mps: summary.best_500m_speed_mps,
+        best_1km_speed_mps: summary.best_1km_speed_mps,
+        best_5km_speed_mps: summary.best_5km_speed_mps,
         max_speed_confidence: summary.max_speed_confidence,
         max_speed_point_position: summary.max_speed_point_position,
         elevation_gain_m: summary.elevation_gain_m,
@@ -231,7 +232,7 @@ defmodule TrackAnalyzer.Tracks do
         quality_score: summary.quality_score,
         bounds: summary.bounds,
         stats: summary.stats,
-        quality: summary.quality,
+        quality: Map.put(summary.quality, "skip_reason", skip_reason),
         error: nil
       }
 
@@ -359,12 +360,12 @@ defmodule TrackAnalyzer.Tracks do
   defp apply_search(query, _search), do: query
 
   defp speed_metric("instantaneous"), do: :max_speed_mps
-  defp speed_metric("500m"), do: :best_500m_speed_mps
-  defp speed_metric(_metric), do: :best_100m_speed_mps
+  defp speed_metric("5km"), do: :best_5km_speed_mps
+  defp speed_metric(_metric), do: :best_1km_speed_mps
 
   defp speed_metric_name(:max_speed_mps), do: "instantaneous"
-  defp speed_metric_name(:best_500m_speed_mps), do: "500m"
-  defp speed_metric_name(:best_100m_speed_mps), do: "100m"
+  defp speed_metric_name(:best_5km_speed_mps), do: "5km"
+  defp speed_metric_name(:best_1km_speed_mps), do: "1km"
 
   defp speed_range(range) when range in ~w(90d 12m all), do: range
   defp speed_range(_range), do: "all"
@@ -385,8 +386,8 @@ defmodule TrackAnalyzer.Tracks do
         name: track.name,
         started_at: track.started_at,
         instantaneous_mps: track.max_speed_mps,
-        best_100m_mps: track.best_100m_speed_mps,
-        best_500m_mps: track.best_500m_speed_mps,
+        best_1km_mps: track.best_1km_speed_mps,
+        best_5km_mps: track.best_5km_speed_mps,
         confidence: track.max_speed_confidence,
         metric_mps: Map.get(track, metric)
       }
@@ -474,8 +475,8 @@ defmodule TrackAnalyzer.Tracks do
       avg_speed_mps: if(moving_s > 0, do: distance_m / moving_s, else: nil),
       max_speed_mps: peak_track && peak_track.max_speed_mps,
       max_speed_confidence: peak_track && peak_track.max_speed_confidence,
-      best_100m_speed_mps: max_value(tracks, :best_100m_speed_mps),
-      best_500m_speed_mps: max_value(tracks, :best_500m_speed_mps),
+      best_1km_speed_mps: max_value(tracks, :best_1km_speed_mps),
+      best_5km_speed_mps: max_value(tracks, :best_5km_speed_mps),
       longest_distance_m: max_value(tracks, :distance_m),
       highest_elevation_gain_m: max_value(tracks, :elevation_gain_m),
       longest_moving_s: max_value(tracks, :moving_s),

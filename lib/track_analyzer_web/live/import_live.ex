@@ -37,7 +37,7 @@ defmodule TrackAnalyzerWeb.ImportLive do
       {:ok, archive} ->
         {:noreply,
          socket
-         |> stream_insert(:archives, archive, at: 0)
+         |> stream_insert(:archives, Imports.with_skipped(archive), at: 0)
          |> put_flash(:info, "#{entry.client_name} is safely stored and queued.")}
 
       {:error, reason} ->
@@ -70,7 +70,7 @@ defmodule TrackAnalyzerWeb.ImportLive do
 
   @impl true
   def handle_info({:archive_updated, archive}, socket) do
-    {:noreply, stream_insert(socket, :archives, archive, at: 0)}
+    {:noreply, stream_insert(socket, :archives, Imports.with_skipped(archive), at: 0)}
   end
 
   def handle_info({:batch_updated, batch}, %{assigns: %{batch: %{id: id}}} = socket)
@@ -297,6 +297,33 @@ defmodule TrackAnalyzerWeb.ImportLive do
                   value={archive.failed_count}
                 />
               </div>
+              <details
+                :if={archive.skipped != []}
+                id={"#{id}-skipped"}
+                class="group mt-3 rounded-xl bg-[var(--surface-strong)] px-3 py-2 text-xs text-[var(--ink-muted)]"
+              >
+                <summary class="flex cursor-pointer list-none items-center justify-between gap-2 font-bold">
+                  <span>
+                    {length(archive.skipped)} near-empty {if(length(archive.skipped) == 1,
+                      do: "track",
+                      else: "tracks"
+                    )} skipped
+                  </span>
+                  <.icon
+                    name="hero-chevron-down"
+                    class="size-4 transition group-open:rotate-180"
+                  />
+                </summary>
+                <ul class="mt-2 space-y-1">
+                  <li
+                    :for={item <- archive.skipped}
+                    class="flex justify-between gap-3 border-t border-[var(--line)] pt-1"
+                  >
+                    <span class="truncate font-mono">{Path.basename(item.path)}</span>
+                    <span class="shrink-0">{item.reason}</span>
+                  </li>
+                </ul>
+              </details>
               <p
                 :if={archive.error}
                 class="mt-3 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-600"
